@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flipdeck · 3D 交互预览 + 键盘小游戏</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0e1116; color: #dfe6ee;
+         font: 14px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; overflow: hidden; }
+  #gl { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; cursor: grab; }
+  #gl.drag { cursor: grabbing; }
+  #gl.stick { cursor: ns-resize; }
+  .panel { position: fixed; background: rgba(18,22,30,.88); border: 1px solid #263041;
+           border-radius: 10px; padding: 12px 14px; backdrop-filter: blur(6px); }
+  #ui { top: 14px; left: 14px; width: 300px; max-height: calc(100vh - 28px); overflow: auto; }
+  #ui h1 { margin: 0 0 6px; font-size: 15px; letter-spacing: .5px; }
+  #ui .sub { color: #8b9bb0; font-size: 12px; margin-bottom: 10px; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  .row label { width: 74px; color: #9fb0c4; font-size: 12px; flex: none; }
+  input[type=range] { flex: 1; accent-color: #4d9dff; }
+  select { background: #1b2432; color: #dfe6ee; border: 1px solid #2e3b4f;
+           border-radius: 6px; padding: 3px 6px; font-size: 12px; flex: 1; min-width: 0; }
+  .val { width: 44px; text-align: right; font-variant-numeric: tabular-nums; color: #cfe4ff; font-size: 12px; }
+  .hr { height: 1px; background: #243044; margin: 9px 0; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+  button { background: #1b2432; color: #dfe6ee; border: 1px solid #2e3b4f; border-radius: 7px;
+           padding: 6px 9px; font-size: 12px; cursor: pointer; }
+  button:hover { background: #233047; border-color: #3d5f8c; }
+  button.pri { background: #1d3a63; border-color: #2f5d9e; }
+  button.on { background: #1f4a33; border-color: #2f7a53; }
+  #legend { bottom: 14px; left: 14px; font-size: 12px; }
+  #legend .k { display: inline-flex; align-items: center; gap: 6px; margin-right: 11px; margin-top: 3px; }
+  #legend .sw { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+  #keys { bottom: 14px; right: 14px; font-size: 12px; line-height: 1.7; }
+  #keys b { color: #ffe08a; font-weight: 600; }
+  #stat { top: 14px; right: 14px; font-size: 12px; color: #8b9bb0; }
+  #err { top: 50%; left: 50%; transform: translate(-50%,-50%); max-width: 660px; display: none;
+         border-color: #7a2b2b; background: rgba(40,16,16,.95); white-space: pre-wrap;
+         font-family: ui-monospace, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div class="panel" id="ui">
+  <h1>flipdeck · 3D 交互预览</h1>
+  <div class="sub">iPhone 12 版 · 拖动旋转 / 滚轮缩放 / 直接键盘玩</div>
+
+  <div class="row"><label>合盖角 θ</label>
+    <input id="theta" type="range" min="0" max="180" step="0.5" value="110">
+    <span class="val" id="thetaV">110°</span></div>
+  <div class="row"><label>托盘 φ</label>
+    <input id="phi" type="range" min="0" max="180" step="0.5" value="0">
+    <span class="val" id="phiV">0°</span></div>
+
+  <div class="btns">
+    <button class="pri" data-pose="game">展开游戏</button>
+    <button data-pose="closed">合盖收纳</button>
+    <button data-pose="phone">手机模式</button>
+    <button data-pose="mid">换形态中</button>
+  </div>
+  <div class="btns">
+    <button data-anim="flip">▶ 翻转</button>
+    <button data-anim="open">▶ 开合</button>
+    <button data-anim="full">▶ 完整换形态</button>
+  </div>
+
+  <div class="hr"></div>
+
+  <div class="row"><label>手机屏幕</label>
+    <select id="screen">
+      <option value="game">▶ 可玩的游戏（键盘）</option>
+      <option value="home">主屏幕（生成）</option>
+      <option value="user">自定义图片</option>
+      <option value="off">灭屏</option>
+    </select></div>
+  <div class="row"><label>屏幕旋转</label>
+    <select id="rot">
+      <option value="0">0°</option><option value="90">90°</option>
+      <option value="180">180°</option><option value="270">270°</option>
+    </select></div>
+  <div class="row"><label>滤镜</label>
+    <select id="crt">
+      <option value="on">CRT 扫描线 + 像素感</option>
+      <option value="off">关</option>
+    </select></div>
+  <div class="row"><label>自定义图</label>
+    <input id="img" type="file" accept="image/*" style="flex:1;font-size:11px;color:#9fb0c4"></div>
+
+  <div class="hr"></div>
+
+  <div class="btns">
+    <button data-tog="phone" class="on">手机</button>
+    <button data-tog="ctrl" class="on">键帽/摇杆</button>
+    <button data-tog="lid" class="on">盖框</button>
+    <button data-tog="spin">自动旋转</button>
+    <button data-tog="iso">视角复位</button>
+  </div>
+</div>
+
+<div class="panel" id="legend">
+  <span class="k"><i class="sw" style="background:#9aa4b2"></i>deck</span>
+  <span class="k"><i class="sw" style="background:#4285d7"></i>lid</span>
+  <span class="k"><i class="sw" style="background:#eb8f2e"></i>cradle</span>
+  <span class="k"><i class="sw" style="background:#22262c"></i>手机</span>
+  <span class="k"><i class="sw" style="background:#d93a3d"></i>ABXY</span>
+  <span class="k"><i class="sw" style="background:#33363c"></i>十字键</span>
+  <span class="k"><i class="sw" style="background:#4db472"></i>肩键</span>
+  <span class="k"><i class="sw" style="background:#3d424b"></i>摇杆</span>
+</div>
+
+<div class="panel" id="keys">
+  <b>W A S D</b> 左摇杆 ｜ <b>↑ ↓ ← →</b> 十字键<br>
+  <b>空格</b> A键(跳) ｜ <b>B X Y</b> 对应键 ｜ <b>I J K L</b> 右摇杆<br>
+  <b>U / O</b> 肩键 ｜ <b>Enter</b> Start ｜ <b>Tab</b> Select ｜ <b>H</b> Home<br>
+  <span style="color:#8b9bb0">摇杆帽可以直接用鼠标拖<br>拖摇杆帽/按键都会动，同时驱动游戏</span>
+</div>
+<div class="panel" id="stat">—</div>
+<div class="panel" id="err"></div>
+
+<script>
+"use strict";
+// ============================== 常量（与 flipdeck/params.py 一致） ==============================
+const HINGE = [0, 52.0, 27.0], PIVOT = [0, -51.0, 5.5];
+const OPEN_GAME = 110.0, DTOR = Math.PI / 180;
+const PH = { L: 146.7, W: 71.5, T: 7.4, zBack: 2.7, bezel: 4.0 };
+const STICK_Z = 12.6;                      // 摇杆摆动中心（与 parts.py 的 STICK_PIVOT_Z 一致）
+const SW = 1200, SH = 520;                 // 屏幕贴图分辨率（横向，与手机长边一致）
+
+// ============================== 矩阵 ==============================
+function mat4() { return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]); }
+function mul(a, b) {
+  const o = new Float32Array(16);
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+    let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+    o[c * 4 + r] = s;
+  }
+  return o;
+}
+function rotX(d) { const a = d * DTOR, c = Math.cos(a), s = Math.sin(a), m = mat4();
+  m[5]=c; m[6]=s; m[9]=-s; m[10]=c; return m; }
+function rotY(d) { const a = d * DTOR, c = Math.cos(a), s = Math.sin(a), m = mat4();
+  m[0]=c; m[2]=-s; m[8]=s; m[10]=c; return m; }
+function rotZ(d) { const a = d * DTOR, c = Math.cos(a), s = Math.sin(a), m = mat4();
+  m[0]=c; m[1]=s; m[4]=-s; m[5]=c; return m; }
+function trans(x, y, z) { const m = mat4(); m[12]=x; m[13]=y; m[14]=z; return m; }
+function around(px, py, pz, R) { return mul(mul(trans(px, py, pz), R), trans(-px, -py, -pz)); }
+function modelMatrices(th, ph) {
+  const lid = mul(trans(HINGE[0], HINGE[1], HINGE[2]), rotX(-th));
+  const c = mul(lid, around(PIVOT[0], PIVOT[1], PIVOT[2], rotX(-ph)));
+  return { deck: mat4(), lid: lid, cradle: c, phone: c };
+}
+
+// ============================== 相机 ==============================
+const cam = { yaw: 38 * DTOR, pitch: 20 * DTOR, dist: 620, target: [0, 0, 60], fov: 34 * DTOR, spin: false };
+function eyePos() {
+  return [cam.target[0] + cam.dist * Math.cos(cam.pitch) * Math.cos(cam.yaw),
+          cam.target[1] + cam.dist * Math.cos(cam.pitch) * Math.sin(cam.yaw),
+          cam.target[2] + cam.dist * Math.sin(cam.pitch)];
+}
+function camBasis() {
+  const e = eyePos();
+  let z = [e[0]-cam.target[0], e[1]-cam.target[1], e[2]-cam.target[2]];
+  let l = Math.hypot(z[0],z[1],z[2]); z = [z[0]/l, z[1]/l, z[2]/l];
+  let x = [1*z[2]-0*z[1], 0*z[0]-0*z[2], 0*z[1]-1*z[0]];       // up=(0,0,1) 叉 z
+  x = [-z[1], z[0], 0];
+  l = Math.hypot(x[0],x[1],x[2]); x = [x[0]/l, x[1]/l, x[2]/l];
+  const y = [z[1]*x[2]-z[2]*x[1], z[2]*x[0]-z[0]*x[2], z[0]*x[1]-z[1]*x[0]];
+  return { e: e, r: x, u: y, f: [-z[0], -z[1], -z[2]] };
+}
+function perspective(fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far), m = new Float32Array(16);
+  m[0]=f/aspect; m[5]=f; m[10]=(far+near)*nf; m[11]=-1; m[14]=2*far*near*nf; return m;
+}
+function lookAt(e, c, up) {
+  let z = [e[0]-c[0], e[1]-c[1], e[2]-c[2]];
+  let l = Math.hypot(z[0],z[1],z[2]); z = [z[0]/l,z[1]/l,z[2]/l];
+  const x = [-z[1], z[0], 0];
+  l = Math.hypot(x[0],x[1],x[2]) || 1; const xr = [x[0]/l,x[1]/l,x[2]/l];
+  const y = [z[1]*xr[2]-z[2]*xr[1], z[2]*xr[0]-z[0]*xr[2], z[0]*xr[1]-z[1]*xr[0]];
+  const m = mat4();
+  m[0]=xr[0]; m[4]=xr[1]; m[8]=xr[2]; m[1]=y[0]; m[5]=y[1]; m[9]=y[2]; m[2]=z[0]; m[6]=z[1]; m[10]=z[2];
+  m[12]=-(xr[0]*e[0]+xr[1]*e[1]+xr[2]*e[2]);
+  m[13]=-(y[0]*e[0]+y[1]*e[1]+y[2]*e[2]);
+  m[14]=-(z[0]*e[0]+z[1]*e[1]+z[2]*e[2]);
+  return m;
+}
+function viewProj() {
+  return mul(perspective(cam.fov, gl.drawingBufferWidth / gl.drawingBufferHeight, 20, 4000),
+             lookAt(eyePos(), cam.target, [0,0,1]));
+}
+
+// ============================== WebGL ==============================
+const canvas = document.getElementById("gl");
+const gl = canvas.getContext("webgl", { antialias: true, alpha: false });
+const errBox = document.getElementById("err");
+function fail(m) { errBox.style.display = "block"; errBox.textContent += String(m) + "\n"; }
+if (!gl) fail("这个浏览器没有 WebGL，无法显示 3D。");
+
+const VS = `attribute vec3 aPos; attribute vec3 aNormal; uniform mat4 uVP; uniform mat4 uModel;
+varying vec3 vN;
+void main() { vN = mat3(uModel) * aNormal; gl_Position = uVP * uModel * vec4(aPos, 1.0); }`;
+const FS = `precision mediump float; varying vec3 vN; uniform vec3 uColor;
+void main() {
+  vec3 n = normalize(vN);
+  vec3 L1 = normalize(vec3(0.45, -0.75, 0.55));
+  vec3 L2 = normalize(vec3(-0.60, 0.35, 0.25));
+  float d = max(dot(n, L1), 0.0) * 0.76 + max(dot(n, L2), 0.0) * 0.22 + 0.30;
+  gl_FragColor = vec4(uColor * min(d, 1.15), 1.0);
+}`;
+const VS_T = `attribute vec3 aPos; attribute vec2 aUV; uniform mat4 uVP; uniform mat4 uModel;
+varying vec2 vUV; void main() { vUV = aUV; gl_Position = uVP * uModel * vec4(aPos, 1.0); }`;
+const FS_T = `precision mediump float; varying vec2 vUV; uniform sampler2D uTex;
+void main() { gl_FragColor = vec4(texture2D(uTex, vUV).rgb, 1.0); }`;
+function compile(src, t) { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+function link(v, f) { const p = gl.createProgram();
+  gl.attachShader(p, compile(v, gl.VERTEX_SHADER)); gl.attachShader(p, compile(f, gl.FRAGMENT_SHADER));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; }
+let prog, progT, loc = {};
+try {
+  prog = link(VS, FS); progT = link(VS_T, FS_T);
+  loc = { aPos: gl.getAttribLocation(prog,"aPos"), aNormal: gl.getAttribLocation(prog,"aNormal"),
+          uVP: gl.getUniformLocation(prog,"uVP"), uModel: gl.getUniformLocation(prog,"uModel"),
+          uColor: gl.getUniformLocation(prog,"uColor"),
+          tPos: gl.getAttribLocation(progT,"aPos"), tUV: gl.getAttribLocation(progT,"aUV"),
+          tVP: gl.getUniformLocation(progT,"uVP"), tModel: gl.getUniformLocation(progT,"uModel"),
+          tTex: gl.getUniformLocation(progT,"uTex") };
+} catch (e) { fail("着色器编译失败：" + e.message); }
+
+function parseSTL(buf) {
+  const dv = new DataView(buf), n = dv.getUint32(80, true);
+  const pos = new Float32Array(n*9), nor = new Float32Array(n*9);
+  let o = 84;
+  for (let i = 0; i < n; i++) {
+    const nx = dv.getFloat32(o,true), ny = dv.getFloat32(o+4,true), nz = dv.getFloat32(o+8,true);
+    for (let v = 0; v < 3; v++) {
+      const b = o + 12 + v*12, k = i*9 + v*3;
+      pos[k]=dv.getFloat32(b,true); pos[k+1]=dv.getFloat32(b+4,true); pos[k+2]=dv.getFloat32(b+8,true);
+      nor[k]=nx; nor[k+1]=ny; nor[k+2]=nz;
+    }
+    o += 50;
+  }
+  return { pos: pos, nor: nor, count: n*3 };
+}
+
+// name -> 颜色 / 跟随的位姿 / 是否属于"手柄件"
+const DEF = {
+  deck:        { color: [0.60,0.64,0.70], pose: "deck" },
+  lid:         { color: [0.26,0.52,0.84], pose: "lid" },
+  cradle:      { color: [0.92,0.56,0.18], pose: "cradle" },
+  phone:       { color: [0.13,0.14,0.16], pose: "phone" },
+  cap_dpad:    { color: [0.20,0.21,0.24], pose: "deck" },
+  cap_a:       { color: [0.85,0.22,0.24], pose: "deck" },
+  cap_b:       { color: [0.85,0.22,0.24], pose: "deck" },
+  cap_x:       { color: [0.85,0.22,0.24], pose: "deck" },
+  cap_y:       { color: [0.85,0.22,0.24], pose: "deck" },
+  cap_start:   { color: [0.78,0.79,0.82], pose: "deck" },
+  cap_select:  { color: [0.78,0.79,0.82], pose: "deck" },
+  cap_home:    { color: [0.78,0.79,0.82], pose: "deck" },
+  lever_l:     { color: [0.30,0.70,0.45], pose: "deck" },
+  lever_r:     { color: [0.30,0.70,0.45], pose: "deck" },
+  sticks_base: { color: [0.24,0.26,0.30], pose: "deck" },
+  stick_l_cap: { color: [0.30,0.32,0.37], pose: "deck" },
+  stick_r_cap: { color: [0.30,0.32,0.37], pose: "deck" },
+};
+const CTRL = Object.keys(DEF).filter(function (n) {
+  return n !== "deck" && n !== "lid" && n !== "cradle" && n !== "phone";
+});
+const parts = {};
+let loading = 0, tris = 0;
+Object.keys(DEF).forEach(function (name) {
+  loading++;
+  fetch("stl/" + name + ".stl").then(function (r) {
+    if (!r.ok) throw new Error(name + ".stl HTTP " + r.status);
+    return r.arrayBuffer();
+  }).then(function (buf) {
+    const m = parseSTL(buf); tris += m.count / 3;
+    const pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, m.pos, gl.STATIC_DRAW);
+    const nb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, nb); gl.bufferData(gl.ARRAY_BUFFER, m.nor, gl.STATIC_DRAW);
+    parts[name] = { pos: pb, nor: nb, count: m.count };
+  }).catch(function (e) { fail("加载 " + name + ".stl 失败：" + e.message); })
+    .finally(function () { loading--; });
+});
+
+// ============================== 静态画面（主屏幕 / 自定义图 / 灭屏） ==============================
+function drawHome(g) {
+  const bg = g.createLinearGradient(0, 0, SW, SH);
+  bg.addColorStop(0, "#123a63"); bg.addColorStop(.5, "#2b6fb0"); bg.addColorStop(1, "#0d2340");
+  g.fillStyle = bg; g.fillRect(0, 0, SW, SH);
+  for (let i = 0; i < 36; i++) { g.globalAlpha = .05; g.fillStyle = "#bfe0ff";
+    g.beginPath(); g.arc((i*197)%SW, (i*331)%SH, 26 + (i%5)*22, 0, 6.3); g.fill(); }
+  g.globalAlpha = 1;
+  const cols = ["#ff5f57","#ffbd2e","#28c840","#4d9dff","#c07bff","#ff8f3f","#22c1c3","#f45b8b"];
+  const n0 = 8, m0 = 3, x0 = 52, y0 = 96, sw = 104, sh = 104, gx = 76, gy = 74;
+  for (let r = 0; r < m0; r++) for (let c = 0; c < n0; c++) {
+    const x = x0 + c*(sw+gx), y = y0 + r*(sh+gy), rr = 24;
+    g.fillStyle = cols[(r*n0+c)%cols.length];
+    g.beginPath(); g.moveTo(x+rr,y); g.arcTo(x+sw,y,x+sw,y+sh,rr); g.arcTo(x+sw,y+sh,x,y+sh,rr);
+    g.arcTo(x,y+sh,x,y,rr); g.arcTo(x,y,x+sw,y,rr); g.closePath(); g.fill();
+    g.fillStyle = "rgba(255,255,255,.85)"; g.beginPath(); g.arc(x+sw/2, y+sh/2, 17, 0, 6.3); g.fill();
+  }
+  g.fillStyle = "rgba(255,255,255,.92)"; g.font = "bold 30px sans-serif";
+  g.fillText("9:41", 36, 46); g.textAlign = "right"; g.font = "26px sans-serif";
+  g.fillText("5G  100%", SW-36, 46); g.textAlign = "left";
+}
+
+// ============================== 小游戏（键盘可玩，直接画到手机屏幕贴图） ==============================
+const scr = document.createElement("canvas"); scr.width = SW; scr.height = SH;
+const sg = scr.getContext("2d");
+const bgc = document.createElement("canvas"); bgc.width = SW; bgc.height = SH;
+const bg = bgc.getContext("2d");
+(function paintBackdrop() {
+  const sky = bg.createLinearGradient(0, 0, 0, SH);
+  sky.addColorStop(0, "#0d1c46"); sky.addColorStop(.45, "#2a5cbe"); sky.addColorStop(1, "#8fc4f2");
+  bg.fillStyle = sky; bg.fillRect(0, 0, SW, SH);
+  for (let i = 0; i < 80; i++) {
+    bg.globalAlpha = .12 + (i % 5) * .1; bg.fillStyle = "#fff";
+    bg.fillRect((i*173)%SW, (i*97)%220, 3, 3);
+  }
+  bg.globalAlpha = 1;
+  bg.fillStyle = "rgba(255,255,255,.92)"; bg.beginPath(); bg.arc(1040, 108, 42, 0, 6.3); bg.fill();
+  bg.fillStyle = "rgba(255,255,255,.16)"; bg.beginPath(); bg.arc(1040, 108, 72, 0, 6.3); bg.fill();
+  function hills(base, amp, color, step) {
+    bg.fillStyle = color; bg.beginPath(); bg.moveTo(0, SH);
+    for (let x = 0; x <= SW; x += step) bg.lineTo(x, base - amp*Math.abs(Math.sin(x/(step*3.1))));
+    bg.lineTo(SW, SH); bg.closePath(); bg.fill();
+  }
+  hills(330, 104, "#2b4d8f", 60); hills(392, 78, "#24406f", 48); hills(444, 56, "#1b3157", 40);
+  bg.fillStyle = "#20364f"; bg.fillRect(0, SH-64, SW, 64);
+  bg.fillStyle = "#2c4a68"; bg.fillRect(0, SH-64, SW, 10);
+})();
+
+const G = {
+  running: true, score: 0, best: 0, hearts: 3, level: 1, msg: "", msgT: 0,
+  p: { x: 200, y: 0, vx: 0, vy: 0, on: false, face: 1 },
+  coins: [], slimes: [], plats: [], t: 0,
+};
+const GROUND = SH - 64, FEET = 54;
+function newLevel(lv) {
+  G.plats = [
+    { x: 150, y: GROUND-84, w: 190 },
+    { x: 430, y: GROUND-138, w: 220 },
+    { x: 760, y: GROUND-96, w: 200 },
+    { x: 1010, y: GROUND-170, w: 170 },
+  ];
+  G.coins = [];
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) {
+    const pl = G.plats[i];
+    G.coins.push({ x: pl.x + 40 + j*46, y: pl.y - 42, got: false, ph: i + j });
+  }
+  for (let i = 0; i < 4; i++) G.coins.push({ x: 260 + i*190, y: GROUND - 26, got: false, ph: i });
+  G.slimes = [];
+  const nS = Math.min(1 + Math.floor(lv/2), 3);
+  for (let i = 0; i < nS; i++) {
+    G.slimes.push({ x: 380 + i*280, y: GROUND, x0: 320 + i*280, x1: 620 + i*280, vx: 30 + 10*lv, ph: i });
+  }
+  G.p.x = 90; G.p.y = GROUND - 60; G.p.vx = 0; G.p.vy = 0;
+  G.hearts = 3; G.msg = "LEVEL " + lv; G.msgT = 1.1;
+}
+newLevel(1);
+
+function step(dt) {
+  if (!G.running) return;
+  G.t += dt;
+  const p = G.p;
+  const ax = keys.axisLX();                       // -1..1
+  p.vx += (ax * 260 - p.vx) * Math.min(1, dt*10);
+  if (Math.abs(ax) > .1) p.face = ax > 0 ? 1 : -1;
+  if (keys.jump() && p.on) { p.vy = -430; p.on = false; }
+  p.vy += 1250 * dt;
+  p.x += p.vx * dt; p.y += p.vy * dt;
+  if (p.x < 40) p.x = 40; if (p.x > SW-40) p.x = SW-40;
+  p.on = false;
+  if (p.y >= GROUND - FEET) { p.y = GROUND - FEET; p.vy = 0; p.on = true; }
+  G.plats.forEach(function (pl) {
+    if (p.x > pl.x - 16 && p.x < pl.x + pl.w + 16) {
+      if (p.vy >= 0 && p.y + FEET >= pl.y && p.y + FEET <= pl.y + 26) {
+        p.y = pl.y - FEET; p.vy = 0; p.on = true;
+      }
+    }
+  });
+  G.coins.forEach(function (c) {
+    if (!c.got && Math.abs(c.x - p.x) < 26 && Math.abs(c.y - (p.y + 22)) < 34) {
+      c.got = true; G.score += 10;
+    }
+  });
+  G.slimes.forEach(function (s) {
+    s.x += s.vx * dt * (s.dir || 1);
+    if (s.x < s.x0) { s.x = s.x0; s.dir = 1; }
+    if (s.x > s.x1) { s.x = s.x1; s.dir = -1; }
+    if (Math.abs(s.x - p.x) < 32 && Math.abs(s.y - 20 - (p.y + 40)) < 42) {
+      G.hearts--; G.msg = "OUCH!"; G.msgT = .8;
+      p.x = Math.max(60, p.x - 120 * p.face); p.vy = -260;
+      if (G.hearts <= 0) {
+        G.best = Math.max(G.best, G.score); G.score = 0; G.msg = "GAME OVER"; G.msgT = 1.6;
+        G.level = 1; newLevel(1);
+      }
+    }
+  });
+  if (G.coins.every(function (c) { return c.got; })) {
+    G.level++; G.best = Math.max(G.best, G.score); newLevel(G.level);
+  }
+  if (G.msgT > 0) G.msgT -= dt;
+}
+
+function drawScreen() {
+  sg.drawImage(bgc, 0, 0);
+  sg.fillStyle = "#6b4a2a";
+  G.plats.forEach(function (pl) { sg.fillRect(pl.x, pl.y, pl.w, 26);
+    sg.fillStyle = "#4f8a3c"; sg.fillRect(pl.x, pl.y, pl.w, 10); sg.fillStyle = "#6b4a2a"; });
+  G.coins.forEach(function (c) {
+    if (c.got) return;
+    const w = 6 + 8*Math.abs(Math.sin(G.t*3 + c.ph));
+    sg.fillStyle = "#ffd25e"; sg.beginPath(); sg.ellipse(c.x, c.y, w, 13, 0, 0, 6.3); sg.fill();
+    sg.fillStyle = "#b8860b"; sg.beginPath(); sg.ellipse(c.x, c.y, w*.45, 6, 0, 0, 6.3); sg.fill();
+  });
+  G.slimes.forEach(function (s) {
+    const bob = Math.abs(Math.sin(G.t*4 + s.ph)) * 6;
+    sg.fillStyle = "#59c26b";
+    sg.beginPath(); sg.ellipse(s.x, s.y - 16 - bob/2, 26, 17 - bob/3, 0, 0, 6.3); sg.fill();
+    sg.fillStyle = "#0d2416";
+    sg.beginPath(); sg.arc(s.x-8, s.y-20-bob/2, 3.4, 0, 6.3); sg.fill();
+    sg.beginPath(); sg.arc(s.x+8, s.y-20-bob/2, 3.4, 0, 6.3); sg.fill();
+  });
+  const p = G.p;
+  sg.save(); sg.translate(p.x, p.y);
+  sg.fillStyle = "#e8483f"; sg.fillRect(-16, 8, 32, 34);
+  sg.fillStyle = "#f6d0a8"; sg.fillRect(-12, -16, 24, 24);
+  sg.fillStyle = "#2b3a55"; sg.fillRect(-13, -20, 26, 7);
+  sg.fillStyle = "#22304a"; sg.fillRect(-14, 40, 12, 14); sg.fillRect(2, 40, 12, 14);
+  sg.fillStyle = "#f2b134"; sg.fillRect(p.face > 0 ? 16 : -34, 2, 20, 7);
+  sg.restore();
+  // HUD
+  for (let i = 0; i < 3; i++) {
+    const hx = 30 + i*42, hy = 62, on = i < G.hearts;
+    sg.fillStyle = on ? "#e8483f" : "rgba(255,255,255,.22)";
+    sg.beginPath();
+    sg.moveTo(hx+13, hy+22);
+    sg.bezierCurveTo(hx-8, hy+4, hx+3, hy-10, hx+13, hy+2);
+    sg.bezierCurveTo(hx+23, hy-10, hx+34, hy+4, hx+13, hy+22);
+    sg.fill();
+  }
+  sg.font = "bold 26px ui-monospace, monospace"; sg.fillStyle = "#fff8e1";
+  sg.fillText("SCORE " + String(G.score).padStart(6, "0"), 30, SH - 22);
+  sg.textAlign = "right";
+  sg.fillStyle = "rgba(255,255,255,.9)";
+  sg.fillText("LV " + G.level + "   BEST " + String(G.best).padStart(6, "0"), SW - 30, SH - 22);
+  sg.textAlign = "left";
+  sg.font = "bold 26px sans-serif"; sg.fillStyle = "rgba(255,255,255,.92)";
+  sg.fillText("9:41", SW/2 - 30, 40);
+  sg.font = "22px sans-serif"; sg.textAlign = "right";
+  sg.fillText("5G  100%", SW - 34, 40); sg.textAlign = "left";
+  if (G.msgT > 0) {
+    sg.globalAlpha = Math.min(1, G.msgT * 2);
+    sg.font = "bold 74px ui-monospace, monospace"; sg.textAlign = "center";
+    sg.fillStyle = "rgba(0,0,0,.45)"; sg.fillText(G.msg, SW/2 + 3, SH/2 + 3);
+    sg.fillStyle = "#ffe08a"; sg.fillText(G.msg, SW/2, SH/2);
+    sg.textAlign = "left"; sg.globalAlpha = 1;
+  }
+  if (crtOn) {                                     // CRT / 像素感滤镜
+    sg.fillStyle = "rgba(0,0,0,.20)";
+    for (let y = 0; y < SH; y += 3) sg.fillRect(0, y, SW, 1);
+    const vg = sg.createRadialGradient(SW/2, SH/2, SH*0.30, SW/2, SH/2, SW*0.62);
+    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.42)");
+    sg.fillStyle = vg; sg.fillRect(0, 0, SW, SH);
+    const gl2 = sg.createLinearGradient(0, 0, SW, SH);
+    gl2.addColorStop(0, "rgba(255,255,255,.10)"); gl2.addColorStop(.26, "rgba(255,255,255,0)");
+    sg.fillStyle = gl2; sg.fillRect(0, 0, SW, SH);
+  }
+}
+
+// ============================== 键盘 ==============================
+const keysDown = {};
+const keys = {
+  axisL: [0, 0], axisR: [0, 0],
+  axisLX: function () { return keys.axisL[0]; },
+  jump: function () { return !!(keysDown[" "] || keysDown["arrowup"] || keysDown["w"]); },
+};
+window.addEventListener("keydown", function (e) {
+  const k = e.key.toLowerCase();
+  keysDown[k] = true;
+  if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright", "tab"].indexOf(k) >= 0) e.preventDefault();
+});
+window.addEventListener("keyup", function (e) { keysDown[e.key.toLowerCase()] = false; });
+window.addEventListener("blur", function () { for (const k in keysDown) keysDown[k] = false; });
+function readKeys() {
+  const d = function (a, b) { return (keysDown[a] ? -1 : 0) + (keysDown[b] ? 1 : 0); };
+  keys.axisL = [d("a", "d"), d("w", "s")];
+  keys.axisR = [d("j", "l"), d("i", "k")];
+}
+
+// ============================== 交互件动画 ==============================
+const press = {};                                  // 每个件的按下量 0..1
+const stickTilt = { l: [0, 0], r: [0, 0] };        // 摇杆倾角（度）
+function ease(cur, target, dt) { return cur + (target - cur) * Math.min(1, dt * 12); }
+function partTransform(name, dt) {
+  const t = mat4();
+  const p = press[name] || 0;
+  if (p > 0.001) { const m = trans(0, 0, -0.75 * p); return m; }
+  if (name === "cap_dpad") {
+    const u = press["cap_dpad_u"] || 0, d2 = press["cap_dpad_d"] || 0;
+    const l = press["cap_dpad_l"] || 0, r = press["cap_dpad_r"] || 0;
+    const R = mul(rotY((r - l) * 5.0), rotX((d2 - u) * 5.0));
+    return around(56 * 0 + (-56), -17, 12.6, R);   // D-pad 中心 (-56, -17, 12.6)
+  }
+  if (name === "stick_l_cap" || name === "stick_r_cap") {
+    const s = name === "stick_l_cap" ? stickTilt.l : stickTilt.r;
+    const R = mul(rotY(s[0]), rotX(-s[1]));
+    const sx = name === "stick_l_cap" ? -56 : 56;
+    return around(sx, 14, STICK_Z, R);
+  }
+  return t;
+}
+function updatePress(dt) {
+  readKeys();
+  const want = {
+    cap_a: keysDown[" "], cap_b: keysDown["b"], cap_x: keysDown["x"], cap_y: keysDown["y"],
+    cap_start: keysDown["enter"], cap_select: keysDown["tab"] || keysDown["shift"], cap_home: keysDown["h"],
+    lever_l: keysDown["u"], lever_r: keysDown["o"],
+    "cap_dpad_u": keysDown["arrowup"], "cap_dpad_d": keysDown["arrowdown"],
+    "cap_dpad_l": keysDown["arrowleft"], "cap_dpad_r": keysDown["arrowright"],
+  };
+  for (const k in want) press[k] = ease(press[k] || 0, want[k] ? 1 : 0, dt);
+  if (!dragStick) {                                 // 摇杆回中 / 跟键盘
+    stickTilt.l[0] = ease(stickTilt.l[0], keys.axisL[0] * 16, dt);
+    stickTilt.l[1] = ease(stickTilt.l[1], keys.axisL[1] * 16, dt);
+    stickTilt.r[0] = ease(stickTilt.r[0], keys.axisR[0] * 16, dt);
+    stickTilt.r[1] = ease(stickTilt.r[1], keys.axisR[1] * 16, dt);
+  }
+}
+
+// ============================== 屏幕贴图 ==============================
+function makeTex(src) {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  return t;
+}
+let texGame, texHome, texOff, texUser = null, crtOn = true;
+const homeCanvas = document.createElement("canvas"); homeCanvas.width = SW; homeCanvas.height = SH;
+(function () { drawHome(homeCanvas.getContext("2d")); })();
+const offCanvas = document.createElement("canvas"); offCanvas.width = SW; offCanvas.height = SH;
+(function () { const g = offCanvas.getContext("2d"); g.fillStyle = "#0a0c0f"; g.fillRect(0, 0, SW, SH); })();
+try {
+  drawScreen();                                     // 先画一帧
+  texGame = makeTex(scr); texHome = makeTex(homeCanvas); texOff = makeTex(offCanvas);
+} catch (e) { fail("屏幕贴图初始化失败：" + e.message); }
+
+// 屏幕四边形（u 沿手机长边 X，v 沿短边 Y —— 横向游戏画面不会躺倒）
+const HZ = PH.L/2 - PH.bezel, HY0 = PIVOT[1] - PH.W/2 + PH.bezel, HY1 = PIVOT[1] + PH.W/2 - PH.bezel;
+const SZ = PH.zBack - PH.T - 0.05;
+const UVSET = {
+  "0":   [[0,1],[0,0],[1,0],[1,1]],
+  "90":  [[1,1],[0,1],[0,0],[1,0]],
+  "180": [[1,0],[1,1],[0,1],[0,0]],
+  "270": [[0,0],[1,0],[1,1],[0,1]],
+};
+let screenMesh = null, screenBuf = null, uvBuf = null;
+function buildScreen(rot) {
+  const uv = UVSET[rot] || UVSET["0"];
+  const cs = [[HZ,HY1],[HZ,HY0],[-HZ,HY0],[-HZ,HY1]];
+  const pos = [], uvs = [];
+  [[0,1,2],[0,2,3]].forEach(function (tri) {
+    tri.forEach(function (i) {
+      pos.push(cs[i][0], cs[i][1], SZ); uvs.push(uv[i][0], uv[i][1]);
+    });
+  });
+  return { pos: new Float32Array(pos), uv: new Float32Array(uvs), count: 6 };
+}
+screenBuf = gl.createBuffer(); uvBuf = gl.createBuffer();
+function setRot(r) {
+  screenMesh = buildScreen(r);
+  gl.bindBuffer(gl.ARRAY_BUFFER, screenBuf); gl.bufferData(gl.ARRAY_BUFFER, screenMesh.pos, gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf); gl.bufferData(gl.ARRAY_BUFFER, screenMesh.uv, gl.DYNAMIC_DRAW);
+}
+setRot("0");
+
+// ============================== 鼠标：轨道 / 拖摇杆帽 ==============================
+function pickStick(mx, my) {
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  const ndcX = (mx / W) * 2 - 1, ndcY = 1 - (my / H) * 2;
+  const b = camBasis(), tanF = Math.tan(cam.fov / 2), aspect = W / H;
+  const dir = [ b.f[0] + b.r[0]*ndcX*tanF*aspect + b.u[0]*ndcY*tanF,
+                b.f[1] + b.r[1]*ndcX*tanF*aspect + b.u[1]*ndcY*tanF,
+                b.f[2] + b.r[2]*ndcX*tanF*aspect + b.u[2]*ndcY*tanF ];
+  const l = Math.hypot(dir[0],dir[1],dir[2]); dir[0]/=l; dir[1]/=l; dir[2]/=l;
+  // 与世界坐标（= deck 局部坐标）里两个摇杆帽的球做相交
+  let best = null;
+  [["l", -56], ["r", 56]].forEach(function (s) {
+    const cx = s[1], cy = 14, cz = 16.6, R = 13;
+    const ox = b.e[0]-cx, oy = b.e[1]-cy, oz = b.e[2]-cz;
+    const bq = ox*dir[0] + oy*dir[1] + oz*dir[2];
+    const cq = ox*ox + oy*oy + oz*oz - R*R;
+    const disc = bq*bq - cq;
+    if (disc < 0) return;
+    const t = -bq - Math.sqrt(disc);
+    if (t < 0) return;
+    if (!best || t < best.t) best = { id: s[0], t: t };
+  });
+  return best ? best.id : null;
+}
+let dragging = false, draggingStick = false, dragStick = null, last = null;
+canvas.addEventListener("pointerdown", function (e) {
+  const s = pickStick(e.offsetX, e.offsetY);
+  last = [e.clientX, e.clientY];
+  if (s) { draggingStick = true; dragStick = s; canvas.classList.add("stick"); return; }
+  dragging = true; canvas.classList.add("drag");
+});
+window.addEventListener("pointerup", function () {
+  dragging = false; draggingStick = false; dragStick = null;
+  canvas.classList.remove("drag"); canvas.classList.remove("stick");
+});
+window.addEventListener("pointermove", function (e) {
+  const dx = e.clientX - last[0], dy = e.clientY - last[1];
+  if (draggingStick && dragStick) {
+    const s = dragStick === "l" ? stickTilt.l : stickTilt.r;
+    s[0] = Math.max(-18, Math.min(18, s[0] + dx * 0.25));
+    s[1] = Math.max(-18, Math.min(18, s[1] + dy * 0.25));
+    last = [e.clientX, e.clientY];
+    return;
+  }
+  if (!dragging) return;
+  cam.yaw -= dx * 0.008;
+  cam.pitch = Math.max(-1.35, Math.min(1.35, cam.pitch + dy * 0.006));
+  last = [e.clientX, e.clientY];
+});
+canvas.addEventListener("wheel", function (e) {
+  e.preventDefault();
+  cam.dist = Math.max(200, Math.min(1800, cam.dist * (1 + Math.sign(e.deltaY) * 0.08)));
+}, { passive: false });
+
+// ============================== UI ==============================
+const state = { theta: OPEN_GAME, phi: 0, showPhone: true, showCtrl: true, showLid: true, screen: "game", rot: "0" };
+const el = { theta: document.getElementById("theta"), phi: document.getElementById("phi"),
+             thetaV: document.getElementById("thetaV"), phiV: document.getElementById("phiV"),
+             stat: document.getElementById("stat"), screen: document.getElementById("screen"),
+             rot: document.getElementById("rot"), crt: document.getElementById("crt") };
+function setPose(t, p) {
+  state.theta = t; state.phi = p; el.theta.value = t; el.phi.value = p;
+  el.thetaV.textContent = t.toFixed(0) + "°"; el.phiV.textContent = p.toFixed(0) + "°";
+}
+el.theta.addEventListener("input", function () { setPose(parseFloat(el.theta.value), state.phi); });
+el.phi.addEventListener("input", function () { setPose(state.theta, parseFloat(el.phi.value)); });
+el.screen.addEventListener("change", function () { state.screen = el.screen.value; });
+el.rot.addEventListener("change", function () { state.rot = el.rot.value; setRot(state.rot); });
+el.crt.addEventListener("change", function () { crtOn = el.crt.value === "on"; });
+document.getElementById("img").addEventListener("change", function (e) {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  const url = URL.createObjectURL(f), im = new Image();
+  im.onload = function () { texUser = makeTex(im); state.screen = "user"; el.screen.value = "user"; URL.revokeObjectURL(url); };
+  im.onerror = function () { fail("这张图片读不了，换个 png/jpg"); };
+  im.src = url;
+});
+document.querySelectorAll("[data-pose]").forEach(function (b) {
+  b.addEventListener("click", function () {
+    const m = { game: [OPEN_GAME,0], closed: [0,0], phone: [0,180], mid: [OPEN_GAME,90] };
+    const v = m[b.dataset.pose]; setPose(v[0], v[1]);
+  });
+});
+document.querySelectorAll("[data-tog]").forEach(function (b) {
+  b.addEventListener("click", function () {
+    const t = b.dataset.tog;
+    if (t === "phone") { state.showPhone = !state.showPhone; b.classList.toggle("on", state.showPhone); }
+    else if (t === "ctrl") { state.showCtrl = !state.showCtrl; b.classList.toggle("on", state.showCtrl); }
+    else if (t === "lid") { state.showLid = !state.showLid; b.classList.toggle("on", state.showLid); }
+    else if (t === "spin") { cam.spin = !cam.spin; b.classList.toggle("on", cam.spin); }
+    else if (t === "iso") { cam.yaw = 38*DTOR; cam.pitch = 20*DTOR; cam.dist = 620; }
+  });
+});
+let anim = null;
+document.querySelectorAll("[data-anim]").forEach(function (b) {
+  b.addEventListener("click", function () {
+    const kind = b.dataset.anim, t0 = performance.now();
+    anim = function (now) {
+      const s = (now - t0)/1000;
+      if (kind === "flip") { setPose(OPEN_GAME, Math.min(180, s/1.6*180)); return s < 1.9; }
+      if (kind === "open") { const a = Math.min(1, s/1.2);
+        setPose(OPEN_GAME*(0.5-0.5*Math.cos(Math.PI*a)), state.phi); return s < 1.4; }
+      if (s < 1) setPose(OPEN_GAME*s, 0);
+      else if (s < 2.8) setPose(OPEN_GAME, Math.min(180, (s-1)/1.6*180));
+      else if (s < 4) setPose(OPEN_GAME*(1-(s-2.8)/1.2), 180);
+      else { setPose(0, 180); return false; }
+      return true;
+    };
+  });
+});
+
+// ============================== 渲染 ==============================
+function resize() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.floor(canvas.clientWidth*dpr), h = Math.floor(canvas.clientHeight*dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+}
+function drawPart(name, mv, extra) {
+  const p = parts[name]; if (!p) return;
+  gl.uniformMatrix4fv(loc.uModel, false, extra ? mul(mv, extra) : mv);
+  gl.uniform3fv(loc.uColor, DEF[name].color);
+  gl.bindBuffer(gl.ARRAY_BUFFER, p.pos); gl.vertexAttribPointer(loc.aPos, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(loc.aPos);
+  gl.bindBuffer(gl.ARRAY_BUFFER, p.nor); gl.vertexAttribPointer(loc.aNormal, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(loc.aNormal);
+  gl.drawArrays(gl.TRIANGLES, 0, p.count);
+}
+let vpCache = null;
+function drawScreenQuad(mv) {
+  if (!screenMesh) return;
+  gl.useProgram(progT);
+  gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-2, -2);
+  gl.uniformMatrix4fv(loc.tVP, false, vpCache);
+  gl.uniformMatrix4fv(loc.tModel, false, mv);
+  gl.activeTexture(gl.TEXTURE0);
+  let tex = texGame;
+  if (state.screen === "home") tex = texHome;
+  else if (state.screen === "off") tex = texOff;
+  else if (state.screen === "user" && texUser) tex = texUser;
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  if (state.screen === "game" && tex === texGame) {   // 每帧把游戏画面推上去
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, scr);
+  }
+  gl.uniform1i(loc.tTex, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, screenBuf);
+  gl.vertexAttribPointer(loc.tPos, 3, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(loc.tPos);
+  gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf);
+  gl.vertexAttribPointer(loc.tUV, 2, gl.FLOAT, false, 0, 0); gl.enableVertexAttribArray(loc.tUV);
+  gl.drawArrays(gl.TRIANGLES, 0, screenMesh.count);
+  gl.disable(gl.POLYGON_OFFSET_FILL);
+  gl.useProgram(prog);
+}
+let prevT = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - prevT)/1000); prevT = now;
+  if (anim && !anim(now)) anim = null;
+  if (cam.spin) cam.yaw += 0.35*dt;
+  updatePress(dt);
+  if (state.screen === "game") { step(dt); drawScreen(); }
+
+  resize();
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0.055, 0.067, 0.086, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
+  if (prog) {
+    vpCache = viewProj();
+    const mv = modelMatrices(state.theta, state.phi);
+    gl.useProgram(prog);
+    gl.uniformMatrix4fv(loc.uVP, false, vpCache);
+    drawPart("deck", mv.deck);
+    if (state.showCtrl) {
+      CTRL.forEach(function (n) { drawPart(n, mv.deck, partTransform(n, dt)); });
+    }
+    if (state.showLid) drawPart("lid", mv.lid);
+    drawPart("cradle", mv.cradle);
+    if (state.showPhone) { drawPart("phone", mv.phone); drawScreenQuad(mv.phone); }
+  }
+  el.stat.textContent = "θ=" + state.theta.toFixed(0) + "° φ=" + state.phi.toFixed(0) + "° · " +
+    (state.screen === "game" ? ("score " + G.score + "  lv " + G.level + "  ♥" + G.hearts + " · ") : "") +
+    Math.round(tris).toLocaleString() + " 三角面" + (loading ? " · 加载中…" : "");
+  requestAnimationFrame(frame);
+}
+setPose(OPEN_GAME, 0);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

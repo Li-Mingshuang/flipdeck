@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.fixed
+
+# 中间产物 / 自测输出
+out/selftest_*
+out/bench*.png
+out/smoke*
+out/_seq*.png
+out/slices_poses.txt
+out/ascii_*.txt
+
+# 临时
+*.tmp
+*.bak
+~$*
