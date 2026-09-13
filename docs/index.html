@@ -80,7 +80,8 @@
   <div class="row"><label>游戏</label>
     <select id="game">
       <option value="run">跑酷（平台跳跃）</option>
-      <option value="race">赛车（伪 3D）</option>
+      <option value="tetris">俄罗斯方块（十字键）</option>
+      <option value="break">打砖块（摇杆）</option>
     </select></div>
   <div class="row"><label>屏幕旋转</label>
     <select id="rot">
@@ -123,7 +124,8 @@
   <b>空格</b> A键(跳/油门) ｜ <b>B X Y</b> 对应键 ｜ <b>I J K L</b> 右摇杆<br>
   <b>U / O</b> 肩键 ｜ <b>Enter</b> Start ｜ <b>Tab</b> Select ｜ <b>H</b> Home<br>
   <span style="color:#8b9bb0">跑酷：A/D 或 ←→ 移动、空格跳<br>
-  赛车：A/D 转向、空格氮气、S 刹车<br>
+  俄罗斯方块：← → 移动、↑ 旋转、↓ 加速、空格直落<br>
+  打砖块：A/D 或 ←→ 移动挡板、空格发球<br>
   摇杆帽可以直接用鼠标拖，按键都会跟着动</span>
 </div>
 <div class="panel" id="stat">—</div>
@@ -174,8 +176,9 @@ function modelMatrices(th, ph) {
 }
 
 // ============================== 相机 ==============================
-const cam = { yaw: -55 * DTOR, pitch: 16 * DTOR, dist: 400, target: [0, 25, 56], fov: 34 * DTOR, spin: false };
-const CAM_HOME = { yaw: -55, pitch: 16, dist: 400, target: [0, 25, 56] };
+// 默认镜头：对准"屏幕中心"、几乎沿屏幕法线看（屏幕法线在游戏位朝 -Y 偏上 20°）
+const cam = { yaw: -82 * DTOR, pitch: 20 * DTOR, dist: 330, target: [0, 62, 72], fov: 34 * DTOR, spin: false };
+const CAM_HOME = { yaw: -82, pitch: 20, dist: 330, target: [0, 62, 72] };
 function eyePos() {
   return [cam.target[0] + cam.dist * Math.cos(cam.pitch) * Math.cos(cam.yaw),
           cam.target[1] + cam.dist * Math.cos(cam.pitch) * Math.sin(cam.yaw),
@@ -494,146 +497,258 @@ function drawScreen() {
   }
 }
 
-// ============================== 赛车（伪 3D） ==============================
-const HORIZON = 132;
-const RC = { z: 0, speed: 0, lateral: 0, dist: 0, best: 0, crash: 0, cars: [], trees: [], dashes: [],
-             msg: "", msgT: 0, seed: 7 };
-function rnd() { RC.seed = (RC.seed * 1103515245 + 12345) & 0x7fffffff; return RC.seed / 0x7fffffff; }
-function newRace() {
-  RC.seed = 7; RC.z = 0; RC.speed = 0; RC.lateral = 0; RC.dist = 0; RC.crash = 0; RC.msg = "GO!"; RC.msgT = 1.0;
-  RC.cars = []; RC.trees = []; RC.dashes = [];
-  for (let i = 0; i < 26; i++) RC.cars.push({ z: 220 + i*260 + rnd()*160, x: (rnd()*2 - 1) * 0.72, sp: 0.45 + rnd()*0.4 });
-  for (let i = 0; i < 60; i++) RC.trees.push({ z: 120 + i*180 + rnd()*90, side: rnd() < .5 ? -1 : 1, kind: rnd() < .3 ? 1 : 0 });
-  for (let i = 0; i < 40; i++) RC.dashes.push(i * 1.0);
+// ============================== 俄罗斯方块 ==============================
+const TET = { w: 10, h: 20, cell: 24, board: [], cur: null, next: null, score: 0, lines: 0,
+              level: 1, drop: 0, over: false, msg: "", msgT: 0, seed: 11, soft: 0, das: 0, dir: 0 };
+const TPIECES = [
+  { c: "#4dd6e8", m: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]] },
+  { c: "#f2d24b", m: [[0,1,1,0],[0,1,1,0],[0,0,0,0],[0,0,0,0]] },
+  { c: "#b06be0", m: [[0,1,0,0],[1,1,1,0],[0,0,0,0],[0,0,0,0]] },
+  { c: "#67d67a", m: [[0,1,1,0],[1,1,0,0],[0,0,0,0],[0,0,0,0]] },
+  { c: "#e8635a", m: [[1,1,0,0],[0,1,1,0],[0,0,0,0],[0,0,0,0]] },
+  { c: "#4d8fe8", m: [[1,0,0,0],[1,1,1,0],[0,0,0,0],[0,0,0,0]] },
+  { c: "#e8984d", m: [[0,0,1,0],[1,1,1,0],[0,0,0,0],[0,0,0,0]] },
+];
+let prevDown = {};
+function once(k) { return !!keysDown[k] && !prevDown[k]; }
+function tetRnd() { TET.seed = (TET.seed * 1103515245 + 12345) & 0x7fffffff; return TET.seed / 0x7fffffff; }
+function tetNew() {
+  const p = TPIECES[Math.floor(tetRnd() * TPIECES.length) % TPIECES.length];
+  return { c: p.c, m: p.m.map(function (r) { return r.slice(); }), x: 3, y: 0 };
 }
-newRace();
-function rproj(z) {                                  // 距离 -> 屏幕 y 与缩放
-  const k = 1 / (1 + Math.max(0.06, z) * 0.0125);
-  return { y: HORIZON + (SH - HORIZON) * k, s: k };
+function tetRot(m) {
+  const o = [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]];
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) o[x][3 - y] = m[y][x];
+  return o;
 }
-function roadCenter(y) {                             // 弯道：远处整体偏移
-  const t = (y - HORIZON) / (SH - HORIZON);          // 0 远 → 1 近
-  return SW / 2 + (1 - t) * (1 - t) * RC.curveOff * 260;
+function tetHit(m, px, py) {
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+    if (!m[y][x]) continue;
+    const bx = px + x, by = py + y;
+    if (bx < 0 || bx >= TET.w || by >= TET.h) return true;
+    if (by >= 0 && TET.board[by][bx]) return true;
+  }
+  return false;
 }
-function stepRace(dt) {
-  const ax = keys.axisL[0];
-  const boost = keys.jump() ? 1.35 : 1.0;
-  const brake = keys.axisL[1] > 0.1 || keysDown["s"];
-  const target = brake ? 0.22 : 1.0;
-  RC.speed += (target - RC.speed) * Math.min(1, dt * (brake ? 3.2 : 0.55));
-  RC.speed = Math.max(0.12, Math.min(1, RC.speed));
-  const v = RC.speed * boost;
-  RC.z += v * 620 * dt;
-  RC.dist += v * 620 * dt / 1000;
-  RC.lateral += ax * dt * 1.5;
-  RC.lateral = Math.max(-1.05, Math.min(1.05, RC.lateral));
-  if (Math.abs(RC.lateral) > 1.0) RC.speed *= 0.985;  // 冲出路面掉速
-  RC.curveOff = Math.sin(RC.z / 900) * 0.7 + Math.sin(RC.z / 340) * 0.35;
-  if (RC.crash > 0) RC.crash -= dt;
-  if (RC.msgT > 0) RC.msgT -= dt;
-  RC.cars.forEach(function (c) {
-    c.z -= v * 620 * dt * c.sp;
-    if (c.z < -40) { c.z = 2600 + rnd() * 900; c.x = (rnd()*2 - 1) * 0.72; }
-    if (c.z < 130 && c.z > 20 && Math.abs(c.x - RC.lateral) < 0.30 && RC.crash <= 0) {
-      RC.crash = 0.9; RC.speed *= 0.55; RC.msg = "CRASH!"; RC.msgT = 0.8;
-      RC.best = Math.max(RC.best, Math.floor(RC.dist));
+function newTetris() {
+  TET.board = []; for (let y = 0; y < TET.h; y++) TET.board.push(new Array(TET.w).fill(null));
+  TET.score = 0; TET.lines = 0; TET.level = 1; TET.over = false; TET.drop = 0; TET.dir = 0; TET.das = 0;
+  TET.cur = tetNew(); TET.next = tetNew(); TET.msg = "TETRIS"; TET.msgT = 1.0;
+}
+newTetris();
+function tetLock() {
+  TET.cur.m.forEach(function (row, y) { row.forEach(function (v, x) {
+    if (v && TET.cur.y + y >= 0) TET.board[TET.cur.y + y][TET.cur.x + x] = TET.cur.c;
+  }); });
+  let cleared = 0;
+  for (let y = TET.h - 1; y >= 0; y--) {
+    if (TET.board[y].every(function (c) { return c; })) {
+      TET.board.splice(y, 1); TET.board.unshift(new Array(TET.w).fill(null));
+      cleared++; y++;
     }
-  });
-  RC.dashes = RC.dashes.map(function (d) { let x = d - v * dt * 6.2; return x < 0 ? x + 4 : x; });
+  }
+  if (cleared) {
+    TET.lines += cleared;
+    TET.score += [0, 100, 300, 500, 800][cleared] * TET.level;
+    TET.level = 1 + Math.floor(TET.lines / 8);
+    TET.msg = cleared === 4 ? "TETRIS!" : ("+" + cleared + " LINE"); TET.msgT = 0.7;
+  }
+  TET.cur = TET.next; TET.next = tetNew();
+  if (tetHit(TET.cur.m, TET.cur.x, TET.cur.y)) {
+    TET.over = true; TET.msg = "GAME OVER"; TET.msgT = 3.0;
+  }
 }
-function drawCarSprite(g, x, y, s, color, flip) {
-  const w = 86 * s, h = 54 * s;
-  g.fillStyle = "rgba(0,0,0,.30)";
-  g.beginPath(); g.ellipse(x, y + h*0.5, w*0.52, h*0.22, 0, 0, 6.3); g.fill();
-  g.fillStyle = color;
-  g.beginPath();
-  g.moveTo(x - w/2, y + h/2); g.lineTo(x - w/2 + w*0.12, y - h/2); g.lineTo(x + w/2 - w*0.12, y - h/2);
-  g.lineTo(x + w/2, y + h/2); g.closePath(); g.fill();
-  g.fillStyle = "rgba(255,255,255,.55)";                       // 车窗
-  g.fillRect(x - w*0.22, y - h*0.28, w*0.44, h*0.30);
-  g.fillStyle = "rgba(0,0,0,.35)";
-  g.fillRect(x - w*0.44, y + h*0.30, w*0.20, h*0.16);
-  g.fillRect(x + w*0.24, y + h*0.30, w*0.20, h*0.16);
-}
-function drawRace() {
-  // 天空 + 远山（复用背景图的上半部分）
-  sg.drawImage(bgc, 0, 0, SW, SH*0.62, 0, 0, SW, HORIZON + 26);
-  sg.fillStyle = "#1d3a26"; sg.fillRect(0, HORIZON + 20, SW, SH - HORIZON - 20);   // 草地
-  const shake = RC.crash > 0 ? Math.sin(RC.crash * 60) * 5 * RC.crash : 0;
-  sg.save(); sg.translate(shake, 0);
-  // 路面：远窄近宽的梯形（带弯道偏移）
-  const cy0 = roadCenter(HORIZON + 20), cy1 = roadCenter(SH);
-  const hw0 = 150, hw1 = 520;
-  sg.fillStyle = "#3a3f47";
-  sg.beginPath(); sg.moveTo(cy0 - hw0, HORIZON + 20); sg.lineTo(cy0 + hw0, HORIZON + 20);
-  sg.lineTo(cy1 + hw1, SH); sg.lineTo(cy1 - hw1, SH); sg.closePath(); sg.fill();
-  // 路肩
-  sg.fillStyle = "#d8d8d8";
-  sg.beginPath(); sg.moveTo(cy0 - hw0 - 12, HORIZON + 20); sg.lineTo(cy0 - hw0, HORIZON + 20);
-  sg.lineTo(cy1 - hw1, SH); sg.lineTo(cy1 - hw1 - 40, SH); sg.closePath(); sg.fill();
-  sg.beginPath(); sg.moveTo(cy0 + hw0, HORIZON + 20); sg.lineTo(cy0 + hw0 + 12, HORIZON + 20);
-  sg.lineTo(cy1 + hw1 + 40, SH); sg.lineTo(cy1 + hw1, SH); sg.closePath(); sg.fill();
-  // 车道虚线（按 z 滚动）
-  RC.dashes.forEach(function (d) {
-    const p = rproj(d * 62 + 26);
-    if (p.y > SH - 4) return;
-    const cx = roadCenter(p.y), w = 26 * p.s, h = 30 * p.s;
-    sg.fillStyle = "rgba(255,255,255,.75)";
-    sg.fillRect(cx - 2 - w, p.y, w * 2, h * 0.35);
-    sg.fillRect(cx + 2, p.y, w * 2, h * 0.35);
-  });
-  // 路边树/杆
-  RC.trees.forEach(function (t) {
-    const p = rproj(t.z), cx = roadCenter(p.y) + t.side * (150 * p.s + 620 * p.s);
-    if (p.y > SH - 6 || p.s < 0.06) return;
-    if (t.kind) {
-      sg.fillStyle = "#2f5d2f";
-      sg.beginPath(); sg.ellipse(cx, p.y - 40*p.s, 26*p.s, 34*p.s, 0, 0, 6.3); sg.fill();
-      sg.fillStyle = "#5b3a20"; sg.fillRect(cx - 4*p.s, p.y - 12*p.s, 8*p.s, 26*p.s);
-    } else {
-      sg.fillStyle = "#c8ccd2";
-      sg.fillRect(cx - 3*p.s, p.y - 70*p.s, 6*p.s, 78*p.s);
+function stepTetris(dt) {
+  const L = once("arrowleft") || once("a"), R = once("arrowright") || once("d");
+  if (once("enter") && TET.over) { newTetris(); return; }
+  if (TET.over) return;
+  const rot = once("arrowup") || once("x") || once("w");
+  const hard = once(" ") || once("b");
+  const softHeld = keysDown["arrowdown"] || keysDown["s"];
+  if (L || R) {
+    const dir = L ? -1 : 1;
+    if (!tetHit(TET.cur.m, TET.cur.x + dir, TET.cur.y)) TET.cur.x += dir;
+    TET.dir = dir; TET.das = 0.18;
+  } else if (TET.dir && (keysDown["arrowleft"] || keysDown["a"] || keysDown["arrowright"] || keysDown["d"])) {
+    TET.das -= dt;
+    if (TET.das <= 0) {
+      TET.das = 0.05;
+      if (!tetHit(TET.cur.m, TET.cur.x + TET.dir, TET.cur.y)) TET.cur.x += TET.dir;
     }
-  });
-  // 对手车（按 z 排序，远的先画）
-  RC.cars.slice().sort(function (a, b) { return b.z - a.z; }).forEach(function (c) {
-    if (c.z < 12) return;
-    const p = rproj(c.z);
-    if (p.y > SH - 10) return;
-    const cx = roadCenter(p.y) + c.x * (170 * p.s + 460 * p.s);
-    drawCarSprite(sg, cx, p.y, Math.max(0.14, p.s * 1.5), c.sp > 0.7 ? "#e05a3c" : "#3f7fd0");
-  });
-  sg.restore();
-  // 玩家车
-  const py = SH - 66;
-  drawCarSprite(sg, SW/2 + RC.lateral * 330, py, 1.25, "#f2c94c");
-  // HUD
-  sg.font = "bold 30px ui-monospace, monospace"; sg.fillStyle = "#fff8e1";
-  const kmh = Math.round(RC.speed * 320);
-  sg.fillText(kmh + " km/h", 30, SH - 24);
-  sg.fillStyle = "rgba(255,255,255,.9)";
-  sg.fillText("DIST " + Math.floor(RC.dist) + " m", 30, 52);
-  sg.textAlign = "right";
-  sg.fillText("BEST " + RC.best + " m", SW - 30, 52);
-  sg.textAlign = "left";
-  // 速度条
-  sg.fillStyle = "rgba(0,0,0,.35)"; sg.fillRect(SW/2 - 160, SH - 40, 320, 16);
-  sg.fillStyle = kmh > 260 ? "#ff6b4a" : "#4dd07a";
-  sg.fillRect(SW/2 - 158, SH - 38, 316 * RC.speed, 12);
-  if (RC.msgT > 0) {
-    sg.globalAlpha = Math.min(1, RC.msgT * 2);
-    sg.font = "bold 74px ui-monospace, monospace"; sg.textAlign = "center";
-    sg.fillStyle = "rgba(0,0,0,.45)"; sg.fillText(RC.msg, SW/2 + 3, SH/2 + 3);
-    sg.fillStyle = "#ffe08a"; sg.fillText(RC.msg, SW/2, SH/2);
+  } else { TET.dir = 0; }
+  if (rot) { const m = tetRot(TET.cur.m); if (!tetHit(m, TET.cur.x, TET.cur.y)) TET.cur.m = m; }
+  if (hard) {
+    while (!tetHit(TET.cur.m, TET.cur.x, TET.cur.y + 1)) { TET.cur.y++; TET.score += 2; }
+    tetLock();
+  }
+  const speed = softHeld ? 0.035 : Math.max(0.08, 0.62 - TET.level * 0.05);
+  TET.drop += dt;
+  if (TET.drop >= speed) {
+    TET.drop = 0;
+    if (!tetHit(TET.cur.m, TET.cur.x, TET.cur.y + 1)) TET.cur.y++;
+    else tetLock();
+  }
+}
+function tetBlock(g, x, y, s, color) {
+  g.fillStyle = color; g.fillRect(x, y, s - 2, s - 2);
+  g.fillStyle = "rgba(255,255,255,.22)"; g.fillRect(x, y, s - 2, 4);
+  g.fillStyle = "rgba(0,0,0,.25)"; g.fillRect(x, y + s - 6, s - 2, 4);
+}
+function drawTetris() {
+  sg.drawImage(bgc, 0, 0);
+  sg.fillStyle = "rgba(6,8,14,.72)"; sg.fillRect(0, 0, SW, SH);
+  const s = TET.cell, bw = TET.w * s, bh = TET.h * s;
+  const bx = 150, by = (SH - bh) / 2;
+  sg.fillStyle = "rgba(0,0,0,.45)"; sg.fillRect(bx - 6, by - 6, bw + 12, bh + 12);
+  sg.strokeStyle = "rgba(255,255,255,.18)"; sg.lineWidth = 2;
+  for (let x = 0; x <= TET.w; x++) { sg.beginPath(); sg.moveTo(bx + x*s, by); sg.lineTo(bx + x*s, by + bh); sg.stroke(); }
+  for (let y = 0; y <= TET.h; y++) { sg.beginPath(); sg.moveTo(bx, by + y*s); sg.lineTo(bx + bw, by + y*s); sg.stroke(); }
+  for (let y = 0; y < TET.h; y++) for (let x = 0; x < TET.w; x++)
+    if (TET.board[y][x]) tetBlock(sg, bx + x*s, by + y*s, s, TET.board[y][x]);
+  if (TET.cur && !TET.over) {
+    const gy = (function () { let yy = TET.cur.y; while (!tetHit(TET.cur.m, TET.cur.x, yy + 1)) yy++; return yy; })();
+    TET.cur.m.forEach(function (row, y) { row.forEach(function (v, x) {
+      if (!v) return;
+      if (gy !== TET.cur.y) {
+        sg.fillStyle = "rgba(255,255,255,.10)";
+        sg.fillRect(bx + (TET.cur.x+x)*s, by + (gy+y)*s, s-2, s-2);
+      }
+      tetBlock(sg, bx + (TET.cur.x+x)*s, by + (TET.cur.y+y)*s, s, TET.cur.c);
+    }); });
+  }
+  // 右侧面板
+  const px = bx + bw + 90;
+  sg.fillStyle = "rgba(255,255,255,.9)"; sg.font = "bold 30px ui-monospace, monospace";
+  sg.fillText("NEXT", px, by + 34);
+  if (TET.next) TET.next.m.forEach(function (row, y) { row.forEach(function (v, x) {
+    if (v) tetBlock(sg, px + x*s, by + 60 + y*s, s, TET.next.c);
+  }); });
+  sg.fillStyle = "#fff8e1"; sg.font = "bold 40px ui-monospace, monospace";
+  sg.fillText(String(TET.score).padStart(6, "0"), px, by + 250);
+  sg.font = "bold 26px ui-monospace, monospace"; sg.fillStyle = "rgba(255,255,255,.85)";
+  sg.fillText("LINES " + TET.lines, px, by + 300);
+  sg.fillText("LEVEL " + TET.level, px, by + 340);
+  sg.fillStyle = "rgba(255,255,255,.55)"; sg.font = "22px ui-monospace, monospace";
+  sg.fillText("← → 移动  ↑ 旋转", px, by + 400);
+  sg.fillText("↓ 加速  空格 直接落下", px, by + 428);
+  if (TET.msgT > 0) {
+    sg.globalAlpha = Math.min(1, TET.msgT * 2);
+    sg.font = "bold 64px ui-monospace, monospace"; sg.textAlign = "center";
+    sg.fillStyle = "rgba(0,0,0,.5)"; sg.fillText(TET.msg, SW/2 + 3, SH/2 + 3);
+    sg.fillStyle = "#ffe08a"; sg.fillText(TET.msg, SW/2, SH/2);
     sg.textAlign = "left"; sg.globalAlpha = 1;
   }
-  if (crtOn) {
-    sg.fillStyle = "rgba(0,0,0,.20)";
-    for (let y = 0; y < SH; y += 3) sg.fillRect(0, y, SW, 1);
-    const vg = sg.createRadialGradient(SW/2, SH/2, SH*0.30, SW/2, SH/2, SW*0.62);
-    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.42)");
-    sg.fillStyle = vg; sg.fillRect(0, 0, SW, SH);
+  crtOverlay();
+}
+
+// ============================== 打砖块（摇杆控制） ==============================
+const BRK = { cols: 12, rows: 6, bw: 92, bh: 28, padW: 200, padH: 22, padX: 0,
+              ballX: 0, ballY: 0, vx: 0, vy: 0, r: 13, bricks: [], score: 0, lives: 3,
+              launched: false, msg: "", msgT: 0, level: 1 };
+function newBreak() {
+  BRK.bricks = [];
+  const offX = (SW - BRK.cols * BRK.bw) / 2;
+  const cols = ["#e8635a","#e8984d","#f2d24b","#67d67a","#4dd6e8","#b06be0"];
+  for (let r = 0; r < BRK.rows; r++) for (let c = 0; c < BRK.cols; c++)
+    BRK.bricks.push({ x: offX + c*BRK.bw, y: 70 + r*BRK.bh, alive: true, c: cols[r % cols.length] });
+  BRK.padX = SW/2; BRK.score = 0; BRK.lives = 3; BRK.launched = false; BRK.level = 1;
+  BRK.ballX = SW/2; BRK.ballY = SH - 110; BRK.vx = 0; BRK.vy = 0;
+  BRK.msg = "BREAKOUT"; BRK.msgT = 1.0;
+}
+newBreak();
+function brkReset() {
+  BRK.launched = false; BRK.ballX = BRK.padX; BRK.ballY = SH - 110; BRK.vx = 0; BRK.vy = 0;
+}
+function stepBreak(dt) {
+  const sp = 300 + BRK.level * 40;
+  BRK.padX += keys.axisL[0] * 520 * dt;
+  BRK.padX = Math.max(BRK.padW/2, Math.min(SW - BRK.padW/2, BRK.padX));
+  if (once("enter") && (BRK.lives <= 0)) { newBreak(); return; }
+  if (!BRK.launched) {
+    BRK.ballX = BRK.padX; BRK.ballY = SH - 110;
+    if (once(" ") || once("arrowup") || once("w")) {
+      BRK.launched = true;
+      const a = (-55 + 20 * (0.5 - Math.random())) * DTOR;
+      BRK.vx = Math.sin(a) * sp; BRK.vy = -Math.abs(Math.cos(a)) * sp;
+    }
+    return;
   }
+  BRK.ballX += BRK.vx * dt; BRK.ballY += BRK.vy * dt;
+  if (BRK.ballX < BRK.r) { BRK.ballX = BRK.r; BRK.vx = Math.abs(BRK.vx); }
+  if (BRK.ballX > SW - BRK.r) { BRK.ballX = SW - BRK.r; BRK.vx = -Math.abs(BRK.vx); }
+  if (BRK.ballY < BRK.r) { BRK.ballY = BRK.r; BRK.vy = Math.abs(BRK.vy); }
+  if (BRK.vy > 0 && BRK.ballY + BRK.r > SH - 56 && BRK.ballY < SH - 30 &&
+      Math.abs(BRK.ballX - BRK.padX) < BRK.padW/2 + BRK.r) {
+    BRK.ballY = SH - 56 - BRK.r;
+    BRK.vy = -Math.abs(BRK.vy);
+    BRK.vx = (BRK.ballX - BRK.padX) / (BRK.padW/2) * sp * 0.85;
+    const n = Math.hypot(BRK.vx, BRK.vy) || 1;
+    BRK.vx = BRK.vx / n * sp; BRK.vy = BRK.vy / n * sp;
+  }
+  if (BRK.ballY > SH + 30) {
+    BRK.lives--;
+    if (BRK.lives <= 0) { BRK.msg = "GAME OVER"; BRK.msgT = 3.0; }
+    else { BRK.msg = "MISS"; BRK.msgT = 0.8; brkReset(); }
+    return;
+  }
+  for (let i = 0; i < BRK.bricks.length; i++) {
+    const b = BRK.bricks[i];
+    if (!b.alive) continue;
+    if (BRK.ballX > b.x - BRK.r && BRK.ballX < b.x + BRK.bw + BRK.r &&
+        BRK.ballY > b.y - BRK.r && BRK.ballY < b.y + BRK.bh + BRK.r) {
+      b.alive = false; BRK.score += 10;
+      const cx = b.x + BRK.bw/2, cy = b.y + BRK.bh/2;
+      if (Math.abs(BRK.ballX - cx) / (BRK.bw/2 + BRK.r) > Math.abs(BRK.ballY - cy) / (BRK.bh/2 + BRK.r))
+        BRK.vx = -BRK.vx; else BRK.vy = -BRK.vy;
+      break;
+    }
+  }
+  if (BRK.bricks.every(function (b) { return !b.alive; })) {
+    BRK.level++; BRK.msg = "LEVEL " + BRK.level; BRK.msgT = 1.2; newBreak(); BRK.level++;
+  }
+  if (BRK.msgT > 0) BRK.msgT -= dt;
+}
+function drawBreak() {
+  sg.drawImage(bgc, 0, 0);
+  sg.fillStyle = "rgba(6,8,14,.55)"; sg.fillRect(0, 0, SW, SH);
+  BRK.bricks.forEach(function (b) {
+    if (!b.alive) return;
+    sg.fillStyle = b.c; sg.fillRect(b.x, b.y, BRK.bw - 4, BRK.bh - 4);
+    sg.fillStyle = "rgba(255,255,255,.25)"; sg.fillRect(b.x, b.y, BRK.bw - 4, 5);
+  });
+  sg.fillStyle = "#dfe6ee"; sg.fillRect(BRK.padX - BRK.padW/2, SH - 46, BRK.padW, BRK.padH);
+  sg.fillStyle = "rgba(255,255,255,.35)"; sg.fillRect(BRK.padX - BRK.padW/2, SH - 46, BRK.padW, 5);
+  sg.fillStyle = "#ffd25e";
+  sg.beginPath(); sg.arc(BRK.ballX, BRK.ballY, BRK.r, 0, 6.3); sg.fill();
+  sg.fillStyle = "rgba(255,255,255,.35)";
+  sg.beginPath(); sg.arc(BRK.ballX - 4, BRK.ballY - 4, BRK.r * 0.35, 0, 6.3); sg.fill();
+  sg.font = "bold 30px ui-monospace, monospace"; sg.fillStyle = "#fff8e1";
+  sg.fillText("SCORE " + String(BRK.score).padStart(5, "0"), 30, 46);
+  sg.textAlign = "right";
+  sg.fillText("♥ ".repeat(Math.max(0, BRK.lives)).trim() + "   LV " + BRK.level, SW - 30, 46);
+  sg.textAlign = "left";
+  sg.fillStyle = "rgba(255,255,255,.55)"; sg.font = "22px ui-monospace, monospace";
+  if (!BRK.launched) sg.fillText("摇杆/ A D 移动挡板，空格发球", SW/2 - 200, SH - 70);
+  if (BRK.msgT > 0) {
+    sg.globalAlpha = Math.min(1, BRK.msgT * 2);
+    sg.font = "bold 66px ui-monospace, monospace"; sg.textAlign = "center";
+    sg.fillStyle = "rgba(0,0,0,.5)"; sg.fillText(BRK.msg, SW/2 + 3, SH/2 + 3);
+    sg.fillStyle = "#ffe08a"; sg.fillText(BRK.msg, SW/2, SH/2);
+    sg.textAlign = "left"; sg.globalAlpha = 1;
+  }
+  crtOverlay();
+}
+
+function crtOverlay() {
+  if (!crtOn) return;
+  sg.fillStyle = "rgba(0,0,0,.20)";
+  for (let y = 0; y < SH; y += 3) sg.fillRect(0, y, SW, 1);
+  const vg = sg.createRadialGradient(SW/2, SH/2, SH*0.30, SW/2, SH/2, SW*0.62);
+  vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.42)");
+  sg.fillStyle = vg; sg.fillRect(0, 0, SW, SH);
+  const gl2 = sg.createLinearGradient(0, 0, SW, SH);
+  gl2.addColorStop(0, "rgba(255,255,255,.10)"); gl2.addColorStop(.26, "rgba(255,255,255,0)");
+  sg.fillStyle = gl2; sg.fillRect(0, 0, SW, SH);
 }
 
 // ============================== 键盘 ==============================
@@ -831,7 +946,9 @@ el.phi.addEventListener("input", function () { setPose(state.theta, parseFloat(e
 el.screen.addEventListener("change", function () { state.screen = el.screen.value; });
 el.game.addEventListener("change", function () {
   state.game = el.game.value;
-  if (state.game === "race") newRace(); else newLevel(G.level);
+  if (state.game === "tetris") newTetris();
+  else if (state.game === "break") newBreak();
+  else newLevel(G.level);
 });
 el.rot.addEventListener("change", function () { state.rot = el.rot.value; setRot(state.rot); });
 el.crt.addEventListener("change", function () { crtOn = el.crt.value === "on"; });
@@ -932,7 +1049,9 @@ function frame(now) {
   if (cam.spin) cam.yaw += 0.35*dt;
   updatePress(dt);
   if (state.screen === "game") {
-    if (state.game === "race") { stepRace(dt); drawRace(); } else { step(dt); drawScreen(); }
+    if (state.game === "tetris") { stepTetris(dt); drawTetris(); }
+    else if (state.game === "break") { stepBreak(dt); drawBreak(); }
+    else { step(dt); drawScreen(); }
   }
 
   resize();
@@ -952,6 +1071,7 @@ function frame(now) {
     drawPart("cradle", mv.cradle);
     if (state.showPhone) { drawPart("phone", mv.phone); drawScreenQuad(mv.phone); }
   }
+  prevDown = Object.assign({}, keysDown);   // 帧末快照：下一帧用 once() 做按键边沿检测
   el.stat.textContent = "θ=" + state.theta.toFixed(0) + "° φ=" + state.phi.toFixed(0) + "° · " +
     (state.screen === "game" ? ("score " + G.score + "  lv " + G.level + "  ♥" + G.hearts + " · ") : "") +
     Math.round(tris).toLocaleString() + " 三角面" + (loading ? " · 加载中…" : "");
