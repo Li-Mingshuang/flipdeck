@@ -27,9 +27,14 @@ def main():
         shutil.copyfile(p, os.path.join(DOCS, "stl", os.path.basename(p)))
         n += 1
         size += os.path.getsize(p)
+    pj = os.path.join(ROOT, "web", "params.json")
+    if os.path.exists(pj):
+        shutil.copyfile(pj, os.path.join(DOCS, "params.json"))
+    else:
+        print("！缺少 web/params.json，先跑 python web_export.py")
     open(os.path.join(DOCS, ".nojekyll"), "w").close()
     print(f"docs/index.html  {os.path.getsize(dst) / 1000:.1f} KB")
-    print(f"docs/stl/        {n} 个文件，{size / 1e6:.2f} MB")
+    print(f"docs/stl/        {n} 个文件，{size / 1e6:.2f} MB（+ params.json）")
     print("好了：GitHub Pages 源设为 main 分支 /docs 即可。")
 
 
