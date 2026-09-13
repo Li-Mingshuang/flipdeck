@@ -6,7 +6,7 @@
 > 下面的「当前状态」区块由 `python status.py` 从仓库真实状态生成，其余内容是手写的计划与决策记录。
 
 <!-- AUTO:STATUS:BEGIN -->
-### 当前状态（脚本自动生成：2026-09-14 01:47，运行 `python status.py` 刷新）
+### 当前状态（脚本自动生成：2026-09-14 02:03，运行 `python status.py` 刷新）
 
 - 机型：**iPhone 12 / 12 Pro**（146.7 × 71.5 × 7.4 mm），已出全套 STL 与渲染
 - 打印件：**9 件**，✔ 全部水密（边界边 0 / 非流形边 0 才算通过）
@@ -45,7 +45,9 @@
 - ✅ 底盘/盖框与机型无关，只有托盘随手机变（你的 iPhone 12 版已出好）
 - ✅ 电子方案：**自建路线已定**（ESP32-S3 + 2 摇杆模块 + 11 开关 + 打印开关架），不需要画 PCB
 - ✅ **固件已写完**：`firmware/flipdeck_gamepad/flipdeck_gamepad.ino`（+ 烧录/标定说明 `firmware/README.md`）
-- ✅ 采购清单、引脚表、装配顺序、分期计划都写好了
+- ✅ **已开源发布**：<https://github.com/Li-Mingshuang/flipdeck>，在线 3D 演示 <https://li-mingshuang.github.io/flipdeck/>
+- ✅ **交互式 3D 演示页**：`web/flipdeck_viewer.html`（零依赖 WebGL；可玩键盘小游戏、键帽/摇杆会动、CRT 滤镜）
+- ✅ 采购清单、引脚表、装配顺序、分期计划、下单话术+首件检查单都写好了
 - ⬜ 还差：**买件 → 打 0 期首件（只打托盘验手机）→ 焊线 → 刷固件 → 装电子 → 整机**（全是动手的活，没有设计阻塞）
 
 ## 2. 原型优先：简化后的最短路径
@@ -157,6 +159,8 @@
 
 | 日期 | 做了什么 |
 |---|---|
+| 2026-09-14 | **发布到 GitHub + Pages**：<https://github.com/Li-Mingshuang/flipdeck>（main / docs），演示页 <https://li-mingshuang.github.io/flipdeck/>；新增 `ORDER_KIT.md`（代打话术+首件检查单）、`make_docs.py`、`LICENSE`（代码 MIT / 硬件 CC BY 4.0）、`.gitignore`；README 改成项目门面 |
+| 2026-09-14 | 3D 演示页大升级：修屏幕方向（原来躺倒 90°）、**键盘可玩的小游戏**（移动/跳跃/金币/史莱姆/关卡）、键帽按下动画 + 十字键跷跷板 + 摇杆摆动（键盘 & 鼠标直接拖摇杆帽）、CRT 扫描线滤镜、自定义图片贴屏；`web_export.py` 拆成 17 个可独立动画的小件 |
 | 2026-09-14 | **固件写完**：`firmware/flipdeck_gamepad/flipdeck_gamepad.ino`（BLE HID + 摇杆自动标定/死区/滤波 + 十字键帽子开关 + 电量可选）+ `firmware/README.md`（装环境/烧录/配对/标定/排错）。路线定为**自建**（ESP32-S3，不用拆供体） |
 | 2026-09-14 | 澄清手机固定（挡墙+沉台就够，不用胶不用磁铁）与连接方式（蓝牙/有线成本对比：拆蓝牙手柄取板最省，¥60–100 且不用写固件）；采购清单改成"供体手柄优先" |
 | 2026-09-14 | 建活文档 + `status.py`；确定"原型优先"路线；原型简化项与升级待办分离 |
@@ -171,12 +175,30 @@
 | 文件 | 内容 |
 |---|---|
 | `PROGRESS.md` | **本文：进度 + 计划 + 决策 + 待办** |
-| `README.md` | 机构原理、关键尺寸、零件表、已验证间隙、目录说明 |
+| `README.md` | 项目门面：原理、验证数据、快速开始、仓库结构、许可 |
+| `ORDER_KIT.md` | **给代打的话（可直接复制）+ 0 期首件检查单 + 1 期机构验证清单** |
 | `DIY_GUIDE.md` | 打印方案、装配顺序、分期计划、风险清单、一壳多机边界 |
 | `ELECTRONICS.md` | 采购清单、Lightning 有线三条路、打印开关架用法、引脚表、固件、动手顺序 |
-| `firmware/flipdeck_gamepad/flipdeck_gamepad.ino` | **手柄固件**（ESP32-S3，BLE HID，含摇杆自动标定） |
-| `firmware/README.md` | 装环境、烧录、配 iPhone、摇杆标定、排错、接线对照 |
+| `firmware/README.md` | 固件：装环境、烧录、配 iPhone、摇杆标定、排错、接线对照 |
 | `out/BUILD_NOTES.md` | 最近一次构建：零件网格数据 + 间隙检查结论 |
 | `out/clearance_report.md` | 13 项姿态间隙明细 |
 | `out/pcb/` | PCB 板框（DXF/SVG/PNG）+ 板级自检报告 |
-| `out/ip12/` | iPhone 12 版渲染图（含总览拼图） |
+| `out/ip12/` | iPhone 12 版渲染图（含 total 拼图 contact_sheet_ip12.png） |
+| `web/` + `docs/` | 交互式 3D 演示（`docs/` = Pages 发布产物，由 `make_docs.py` 生成） |
+| `LICENSE` | 代码 MIT / 硬件 CC BY 4.0 |
+
+## 9. 发布与更新（GitHub）
+
+- 仓库：<https://github.com/Li-Mingshuang/flipdeck>（公开，默认分支 `main`）
+- 在线演示：<https://li-mingshuang.github.io/flipdeck/>（Pages 源 = `main` 分支 `/docs`）
+- 更新流程：改完东西后
+
+```powershell
+python build.py --render-dir ip12     # 重出 STL + 渲染 + 报告
+python web_export.py                  # 重出网页用轻量 STL
+python make_docs.py                   # 同步到 docs/（Pages）
+python status.py                      # 刷新本文状态块
+git add -A; git commit -m "..."; git push
+```
+
+- 许可：代码 MIT / 硬件设计（STL、Pages）CC BY 4.0
