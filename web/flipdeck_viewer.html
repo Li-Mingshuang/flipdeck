@@ -120,9 +120,11 @@
 
 <div class="panel" id="keys">
   <b>W A S D</b> 左摇杆 ｜ <b>↑ ↓ ← →</b> 十字键<br>
-  <b>空格</b> A键(跳) ｜ <b>B X Y</b> 对应键 ｜ <b>I J K L</b> 右摇杆<br>
+  <b>空格</b> A键(跳/油门) ｜ <b>B X Y</b> 对应键 ｜ <b>I J K L</b> 右摇杆<br>
   <b>U / O</b> 肩键 ｜ <b>Enter</b> Start ｜ <b>Tab</b> Select ｜ <b>H</b> Home<br>
-  <span style="color:#8b9bb0">摇杆帽可以直接用鼠标拖<br>拖摇杆帽/按键都会动，同时驱动游戏</span>
+  <span style="color:#8b9bb0">跑酷：A/D 或 ←→ 移动、空格跳<br>
+  赛车：A/D 转向、空格氮气、S 刹车<br>
+  摇杆帽可以直接用鼠标拖，按键都会跟着动</span>
 </div>
 <div class="panel" id="stat">—</div>
 <div class="panel" id="err"></div>
@@ -846,7 +848,9 @@ document.querySelectorAll("[data-pose]").forEach(function (b) {
     const v = m[b.dataset.pose]; setPose(v[0], v[1]);
     if (b.dataset.pose === "daily") {                 // 日常模式：拔掉铰链销取走底座
       state.showDeck = !state.showDeck;
+      if (!state.showDeck) state.showCtrl = false;    // 底座走了，键帽/摇杆也跟着走
       document.querySelectorAll('[data-tog="deck"]').forEach(function (x) { x.classList.toggle("on", state.showDeck); });
+      document.querySelectorAll('[data-tog="ctrl"]').forEach(function (x) { x.classList.toggle("on", state.showCtrl); });
     }
   });
 });
