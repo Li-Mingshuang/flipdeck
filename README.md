@@ -94,6 +94,26 @@ python -m http.server 8010
 **键盘能直接玩屏幕里的游戏**（两套：横版跑酷 + 伪 3D 赛车），同时 3D 模型上的键帽会按下去、十字键会跷、摇杆会摆；鼠标也能直接拖摇杆帽。
 机构常数由 `web/public_params.json`（`web_export.py` 生成）注入，页面不会和 CAD 参数漂移；矩阵数学用 `web/verify_matrix.js` 与 Python 的 `poses.pose` 对过答案，四个姿态偏差 ≤0.0005mm。
 
+## 🏆 排行榜 Top 10
+
+> 在演示页里玩完小游戏，点「提交成绩」会开一个预填好的 GitHub Issue；Actions 自动汇总到这里（也可手动开标题带 `[SCORE]` 的 issue）。同一玩家每款游戏只记最好成绩。
+
+<!-- LEADERBOARD:BEGIN -->
+## 🎮 跑酷（`run`）
+
+_还没有成绩 —— 来占个第一？_
+
+## 🎮 俄罗斯方块（`tetris`）
+
+_还没有成绩 —— 来占个第一？_
+
+## 🎮 打砖块（`break`）
+
+_还没有成绩 —— 来占个第一？_
+
+_最后更新：2026-09-13 18:28（UTC）_
+<!-- LEADERBOARD:END -->
+
 ## 仓库结构
 
 ```

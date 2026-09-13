@@ -1,0 +1,35 @@
+name: 提交游戏成绩
+description: 提交 flipdeck 演示页里的小游戏成绩，自动进入 README 排行榜
+title: "[SCORE] "
+labels: ["score"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        玩完演示页（https://li-mingshuang.github.io/flipdeck/）里的小游戏，把成绩填在这里提交。
+        提交后 GitHub Actions 会自动把它汇总进 README 的 Top10 榜单。
+        同一款游戏只记你最好的成绩；分数靠自觉，这是友好排行榜 🙂
+  - type: dropdown
+    id: game
+    attributes:
+      label: 游戏
+      options:
+        - tetris（俄罗斯方块）
+        - break（打砖块）
+        - run（跑酷）
+    validations:
+      required: true
+  - type: input
+    id: score
+    attributes:
+      label: 分数
+      placeholder: "例如 12480"
+    validations:
+      required: true
+  - type: input
+    id: note
+    attributes:
+      label: 备注（可选）
+      placeholder: "怎么打的、什么设备…"
+    validations:
+      required: false

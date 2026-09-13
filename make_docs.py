@@ -32,9 +32,15 @@ def main():
         shutil.copyfile(pj, os.path.join(DOCS, "params.json"))
     else:
         print("！缺少 web/params.json，先跑 python web_export.py")
+    for extra in ("leaderboard.json", "LEADERBOARD.md"):
+        src2 = os.path.join(ROOT, "web" if extra.endswith(".json") else "", extra)
+        if extra == "LEADERBOARD.md":
+            src2 = os.path.join(ROOT, "LEADERBOARD.md")
+        if os.path.exists(src2):
+            shutil.copyfile(src2, os.path.join(DOCS, extra))
     open(os.path.join(DOCS, ".nojekyll"), "w").close()
     print(f"docs/index.html  {os.path.getsize(dst) / 1000:.1f} KB")
-    print(f"docs/stl/        {n} 个文件，{size / 1e6:.2f} MB（+ params.json）")
+    print(f"docs/stl/        {n} 个文件，{size / 1e6:.2f} MB（+ params.json / leaderboard）")
     print("好了：GitHub Pages 源设为 main 分支 /docs 即可。")
 
 

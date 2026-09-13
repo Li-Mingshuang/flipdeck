@@ -98,6 +98,17 @@
 
   <div class="hr"></div>
 
+  <div class="row"><label>我的最好</label>
+    <span id="best" style="flex:1;font-size:12px;color:#cfe4ff">—</span></div>
+  <div class="btns">
+    <button id="submit" class="pri">提交成绩到排行榜</button>
+    <button id="boardToggle">显示 Top 10</button>
+  </div>
+  <pre id="board" style="display:none;margin:8px 0 0;max-height:200px;overflow:auto;
+       font:12px/1.5 ui-monospace,monospace;color:#cfe4ff;white-space:pre-wrap"></pre>
+
+  <div class="hr"></div>
+
   <div class="btns">
     <button data-tog="phone" class="on">手机</button>
     <button data-tog="deck" class="on">底座</button>
@@ -420,6 +431,7 @@ function step(dt) {
       G.hearts--; G.msg = "OUCH!"; G.msgT = .8;
       p.x = Math.max(60, p.x - 120 * p.face); p.vy = -260;
       if (G.hearts <= 0) {
+        setLocalBest("run", G.score);
         G.best = Math.max(G.best, G.score); G.score = 0; G.msg = "GAME OVER"; G.msgT = 1.6;
         G.level = 1; newLevel(1);
       }
@@ -556,6 +568,7 @@ function tetLock() {
   TET.cur = TET.next; TET.next = tetNew();
   if (tetHit(TET.cur.m, TET.cur.x, TET.cur.y)) {
     TET.over = true; TET.msg = "GAME OVER"; TET.msgT = 3.0;
+    setLocalBest("tetris", TET.score);
   }
 }
 function stepTetris(dt) {
@@ -673,35 +686,57 @@ function stepBreak(dt) {
     }
     return;
   }
-  BRK.ballX += BRK.vx * dt; BRK.ballY += BRK.vy * dt;
-  if (BRK.ballX < BRK.r) { BRK.ballX = BRK.r; BRK.vx = Math.abs(BRK.vx); }
-  if (BRK.ballX > SW - BRK.r) { BRK.ballX = SW - BRK.r; BRK.vx = -Math.abs(BRK.vx); }
-  if (BRK.ballY < BRK.r) { BRK.ballY = BRK.r; BRK.vy = Math.abs(BRK.vy); }
-  if (BRK.vy > 0 && BRK.ballY + BRK.r > SH - 56 && BRK.ballY < SH - 30 &&
-      Math.abs(BRK.ballX - BRK.padX) < BRK.padW/2 + BRK.r) {
-    BRK.ballY = SH - 56 - BRK.r;
-    BRK.vy = -Math.abs(BRK.vy);
-    BRK.vx = (BRK.ballX - BRK.padX) / (BRK.padW/2) * sp * 0.85;
-    const n = Math.hypot(BRK.vx, BRK.vy) || 1;
-    BRK.vx = BRK.vx / n * sp; BRK.vy = BRK.vy / n * sp;
+  // 小球按小步推进：高速时也不会一帧穿过挡板
+  const spd0 = Math.hypot(BRK.vx, BRK.vy);
+  const steps = Math.max(1, Math.ceil(spd0 * dt / (BRK.r * 0.6)));
+  const sdt = dt / steps;
+  for (let s = 0; s < steps; s++) {
+    BRK.ballX += BRK.vx * sdt; BRK.ballY += BRK.vy * sdt;
+    if (BRK.ballX < BRK.r) { BRK.ballX = BRK.r; BRK.vx = Math.abs(BRK.vx); }
+    if (BRK.ballX > SW - BRK.r) { BRK.ballX = SW - BRK.r; BRK.vx = -Math.abs(BRK.vx); }
+    if (BRK.ballY < BRK.r) { BRK.ballY = BRK.r; BRK.vy = Math.abs(BRK.vy); }
+    // 挡板反弹：出射角只由"击球点偏离挡板中心多少"决定（经典打砖块手感）
+    if (BRK.vy > 0 && BRK.ballY + BRK.r >= SH - 52 && BRK.ballY < SH - 20 &&
+        Math.abs(BRK.ballX - BRK.padX) < BRK.padW / 2 + BRK.r) {
+      const off = Math.max(-1, Math.min(1, (BRK.ballX - BRK.padX) / (BRK.padW / 2)));
+      const a = off * 58 * DTOR;                       // 0 = 竖直向上，±58° = 斜出
+      const spd = Math.min(820, Math.hypot(BRK.vx, BRK.vy) * 1.02);
+      BRK.vx = Math.sin(a) * spd;
+      BRK.vy = -Math.cos(a) * spd;
+      BRK.ballY = SH - 52 - BRK.r;
+      BRK.hits = (BRK.hits || 0) + 1;
+    }
+    // 砖块：命中后按更浅的一侧反射，并防止球变成"贴地平飞"
+    for (let i = 0; i < BRK.bricks.length; i++) {
+      const b = BRK.bricks[i];
+      if (!b.alive) continue;
+      if (BRK.ballX > b.x - BRK.r && BRK.ballX < b.x + b.bw + BRK.r &&
+          BRK.ballY > b.y - BRK.r && BRK.ballY < b.y + b.bh + BRK.r) {
+        b.alive = false; BRK.score += 10;
+        const cx = b.x + b.bw / 2, cy = b.y + b.bh / 2;
+        if (Math.abs(BRK.ballX - cx) / (BRK.bw / 2 + BRK.r) >
+            Math.abs(BRK.ballY - cy) / (BRK.bh / 2 + BRK.r)) BRK.vx = -BRK.vx;
+        else BRK.vy = -BRK.vy;
+        const sp2 = Math.hypot(BRK.vx, BRK.vy);
+        if (Math.abs(BRK.vy) < sp2 * 0.30) {           // 太平时抬高垂直分量
+          BRK.vy = (BRK.vy < 0 ? -1 : 1) * sp2 * 0.30;
+          const nx = Math.hypot(BRK.vx, BRK.vy);
+          BRK.vx = BRK.vx / nx * sp2; BRK.vy = BRK.vy / nx * sp2;
+        }
+        break;
+      }
+    }
   }
+  // 掉球：扣命 / 重开（这段之前被误删，补回来）
   if (BRK.ballY > SH + 30) {
     BRK.lives--;
-    if (BRK.lives <= 0) { BRK.msg = "GAME OVER"; BRK.msgT = 3.0; }
-    else { BRK.msg = "MISS"; BRK.msgT = 0.8; brkReset(); }
-    return;
-  }
-  for (let i = 0; i < BRK.bricks.length; i++) {
-    const b = BRK.bricks[i];
-    if (!b.alive) continue;
-    if (BRK.ballX > b.x - BRK.r && BRK.ballX < b.x + BRK.bw + BRK.r &&
-        BRK.ballY > b.y - BRK.r && BRK.ballY < b.y + BRK.bh + BRK.r) {
-      b.alive = false; BRK.score += 10;
-      const cx = b.x + BRK.bw/2, cy = b.y + BRK.bh/2;
-      if (Math.abs(BRK.ballX - cx) / (BRK.bw/2 + BRK.r) > Math.abs(BRK.ballY - cy) / (BRK.bh/2 + BRK.r))
-        BRK.vx = -BRK.vx; else BRK.vy = -BRK.vy;
-      break;
+    if (BRK.lives <= 0) {
+      BRK.msg = "GAME OVER"; BRK.msgT = 3.0; BRK.launched = false;
+      setLocalBest("break", BRK.score);
+    } else {
+      BRK.msg = "MISS"; BRK.msgT = 0.8; brkReset();
     }
+    return;
   }
   if (BRK.bricks.every(function (b) { return !b.alive; })) {
     BRK.level++; BRK.msg = "LEVEL " + BRK.level; BRK.msgT = 1.2; newBreak(); BRK.level++;
@@ -750,6 +785,67 @@ function crtOverlay() {
   gl2.addColorStop(0, "rgba(255,255,255,.10)"); gl2.addColorStop(.26, "rgba(255,255,255,0)");
   sg.fillStyle = gl2; sg.fillRect(0, 0, SW, SH);
 }
+
+// ============================== 排行榜（GitHub Issue 提交 + Actions 汇总） ==============================
+const REPO = "Li-Mingshuang/flipdeck";
+const GAME_KEY = { run: "run", tetris: "tetris", break: "break" };
+function localBest(g) { const v = localStorage.getItem("flipdeck.best." + g); return v ? parseInt(v, 10) : 0; }
+function setLocalBest(g, s) {
+  if (s > localBest(g)) { localStorage.setItem("flipdeck.best." + g, String(s)); }
+  refreshBestLine();
+}
+function refreshBestLine() {
+  const e = document.getElementById("best");
+  if (!e) return;
+  e.textContent = "跑酷 " + localBest("run") + " ｜ 方块 " + localBest("tetris") + " ｜ 砖块 " + localBest("break");
+}
+function currentScore() {
+  if (state.game === "tetris") return TET.score;
+  if (state.game === "break") return BRK.score;
+  return G.score;
+}
+document.getElementById("submit").addEventListener("click", function () {
+  const g = GAME_KEY[state.game] || "run";
+  const s = currentScore();
+  if (!s) { alert("先玩一局、拿到分数再提交 🙂"); return; }
+  const body = "### 游戏\n\n" + g + "\n\n### 分数\n\n" + s + "\n\n（由演示页“提交成绩”按钮自动预填）\n";
+  const url = "https://github.com/" + REPO + "/issues/new?labels=score" +
+    "&title=" + encodeURIComponent("[SCORE] " + g + " " + s) +
+    "&body=" + encodeURIComponent(body);
+  window.open(url, "_blank");
+});
+let boardShown = false;
+document.getElementById("boardToggle").addEventListener("click", function () {
+  const pre = document.getElementById("board");
+  boardShown = !boardShown;
+  pre.style.display = boardShown ? "block" : "none";
+  this.textContent = boardShown ? "隐藏 Top 10" : "显示 Top 10";
+  if (boardShown) loadBoard();
+});
+function loadBoard() {
+  const pre = document.getElementById("board");
+  pre.textContent = "加载中…";
+  fetch("leaderboard.json", { cache: "no-store" }).then(function (r) {
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }).then(function (d) {
+    const names = { run: "跑酷", tetris: "俄罗斯方块", break: "打砖块" };
+    let out = "更新于 " + d.updated + " (UTC)\n";
+    Object.keys(names).forEach(function (g) {
+      out += "\n【" + names[g] + "】\n";
+      const rows = (d.games && d.games[g]) || [];
+      if (!rows.length) out += "  （还没有成绩）\n";
+      rows.forEach(function (r, i) {
+        out += "  " + String(i + 1).padStart(2) + ". @" + r.user + "  " + r.score + "\n";
+      });
+    });
+    out += "\n提交方式：玩完点上面「提交成绩」，会开一个预填好的 issue，Actions 自动汇总进 README。";
+    pre.textContent = out;
+  }).catch(function (e) {
+    pre.textContent = "排行榜读取失败：" + e.message + "\n（本地要看榜单先跑 python make_docs.py 同步 docs/）";
+  });
+}
+refreshBestLine();
 
 // ============================== 键盘 ==============================
 const keysDown = {};

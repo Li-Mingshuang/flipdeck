@@ -1,0 +1,44 @@
+name: leaderboard
+
+# 有人提交成绩（开 issue）或每天定时，就重新汇总 Top10 并提交回仓库
+on:
+  issues:
+    types: [opened, edited, reopened, deleted, closed]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: write
+  issues: read
+
+concurrency:
+  group: leaderboard
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 汇总排行榜
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/scripts/build_leaderboard.py
+
+      - name: 提交更新
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add LEADERBOARD.md README.md docs/leaderboard.json
+          if git diff --staged --quiet; then
+            echo "榜单没有变化"
+          else
+            git commit -m "chore(leaderboard): 更新各游戏 Top10 [skip ci]"
+            git push
+          fi
