@@ -156,7 +156,8 @@ const DTOR = Math.PI / 180;
 const PH = { L: 146.7, W: 71.5, T: 7.4, zBack: -2.3, bezel: 3.0 };
 const SW = 1200, SH = 520;                 // 屏幕贴图分辨率（横向，与手机长边一致）
 let ready = false;
-function boot() { ready = true; setPose(OPEN_GAME, 0); requestAnimationFrame(frame); }
+function boot() { ready = true; setPose(OPEN_GAME, 0); fitCamera(OPEN_GAME, 0);
+  requestAnimationFrame(frame); }
 fetch("params.json").then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
   if (d) {
     HINGE = d.hinge; PIVOT = d.pivot; OPEN_GAME = d.open_game; STICK_Z = d.stick_z;
@@ -312,6 +313,7 @@ const CTRL = Object.keys(DEF).filter(function (n) {
 });
 const parts = {};
 let loading = 0, tris = 0;
+pendingFrames = Object.keys(DEF).length;
 Object.keys(DEF).forEach(function (name) {
   loading++;
   fetch("stl/" + name + ".stl").then(function (r) {
@@ -319,9 +321,18 @@ Object.keys(DEF).forEach(function (name) {
     return r.arrayBuffer();
   }).then(function (buf) {
     const m = parseSTL(buf); tris += m.count / 3;
+    let lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+    for (let i = 0; i < m.pos.length; i += 3) {
+      for (let k = 0; k < 3; k++) {
+        const v = m.pos[i + k];
+        if (v < lo[k]) lo[k] = v;
+        if (v > hi[k]) hi[k] = v;
+      }
+    }
     const pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, m.pos, gl.STATIC_DRAW);
     const nb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, nb); gl.bufferData(gl.ARRAY_BUFFER, m.nor, gl.STATIC_DRAW);
-    parts[name] = { pos: pb, nor: nb, count: m.count };
+    parts[name] = { pos: pb, nor: nb, count: m.count, bb: { lo: lo, hi: hi } };
+    if (--pendingFrames === 0 && ready) { framed = false; fitCamera(state.theta, state.phi); framed = true; }
   }).catch(function (e) { fail("加载 " + name + ".stl 失败：" + e.message); })
     .finally(function () { loading--; });
 });
@@ -1289,7 +1300,7 @@ document.getElementById("img").addEventListener("change", function (e) {
 document.querySelectorAll("[data-pose]").forEach(function (b) {
   b.addEventListener("click", function () {
     const m = { game: [OPEN_GAME,0], closed: [0,0], phone: [0,180], mid: [OPEN_GAME,90], daily: [0,180] };
-    const v = m[b.dataset.pose]; setPose(v[0], v[1]);
+    const v = m[b.dataset.pose]; setPose(v[0], v[1]); fitCamera(v[0], v[1]);
     if (b.dataset.pose === "daily") {                 // 日常模式：拔掉铰链销取走底座
       state.showDeck = !state.showDeck;
       if (!state.showDeck) state.showCtrl = false;    // 底座走了，键帽/摇杆也跟着走
@@ -1306,7 +1317,8 @@ document.querySelectorAll("[data-tog]").forEach(function (b) {
     else if (t === "ctrl") { state.showCtrl = !state.showCtrl; b.classList.toggle("on", state.showCtrl); }
     else if (t === "lid") { state.showLid = !state.showLid; b.classList.toggle("on", state.showLid); }
     else if (t === "spin") { cam.spin = !cam.spin; b.classList.toggle("on", cam.spin); }
-    else if (t === "iso") { cam.yaw = CAM_HOME.yaw*DTOR; cam.pitch = CAM_HOME.pitch*DTOR; cam.dist = CAM_HOME.dist; cam.target = CAM_HOME.target.slice(); }
+    else if (t === "iso") { cam.yaw = CAM_HOME.yaw*DTOR; cam.pitch = CAM_HOME.pitch*DTOR;
+      fitCamera(state.theta, state.phi); }
   });
 });
 let anim = null;
@@ -1326,6 +1338,53 @@ document.querySelectorAll("[data-anim]").forEach(function (b) {
     };
   });
 });
+
+// ============================== 自动取景 ==============================
+let pendingFrames = 0, framed = false;
+function sceneCorners(theta, phi) {
+  const mv = modelMatrices(theta, phi);
+  const pts = [];
+  Object.keys(parts).forEach(function (name) {
+    const p = parts[name];
+    if (!p.bb) return;
+    const M = mv[DEF[name].pose];
+    for (let i = 0; i < 8; i++) {
+      const lp = [ (i & 1) ? p.bb.hi[0] : p.bb.lo[0],
+                   (i & 2) ? p.bb.hi[1] : p.bb.lo[1],
+                   (i & 4) ? p.bb.hi[2] : p.bb.lo[2] ];
+      pts.push([ M[0]*lp[0] + M[4]*lp[1] + M[8]*lp[2] + M[12],
+                 M[1]*lp[0] + M[5]*lp[1] + M[9]*lp[2] + M[13],
+                 M[2]*lp[0] + M[6]*lp[1] + M[10]*lp[2] + M[14] ]);
+    }
+  });
+  return pts;
+}
+// 按当前姿态自动取景：目标点取包围盒中心，距离取"所有角点都能进画面"的最小值
+function fitCamera(theta, phi, margin) {
+  if (!Object.keys(parts).length) return;
+  margin = margin || 1.06;
+  const pts = sceneCorners(theta, phi);
+  if (!pts.length) return;
+  const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+  pts.forEach(function (p) {
+    for (let k = 0; k < 3; k++) { if (p[k] < lo[k]) lo[k] = p[k]; if (p[k] > hi[k]) hi[k] = p[k]; }
+  });
+  const c = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
+  cam.target = c;
+  const b = camBasis();
+  const tanV = Math.tan(cam.fov / 2);
+  const aspect = Math.max(0.5, canvas.clientWidth / Math.max(1, canvas.clientHeight));
+  const tanH = tanV * aspect;
+  let D = 60;
+  pts.forEach(function (p) {
+    const d = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
+    const a = d[0]*b.f[0] + d[1]*b.f[1] + d[2]*b.f[2];
+    const x = Math.abs(d[0]*b.r[0] + d[1]*b.r[1] + d[2]*b.r[2]);
+    const y = Math.abs(d[0]*b.u[0] + d[1]*b.u[1] + d[2]*b.u[2]);
+    D = Math.max(D, x / tanH - a, y / tanV - a);
+  });
+  cam.dist = Math.min(2400, Math.max(160, D * margin));
+}
 
 // ============================== 渲染 ==============================
 function resize() {
