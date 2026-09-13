@@ -155,8 +155,13 @@ PLATE_D = 74.5
 PLATE_R = 6.0
 PHONE_RECESS = 0.8
 PHONE_FIT = 0.35
-PHONE_LIP = 1.2
 PHONE_GAP = 0.10              # 手机背面与沉台底的间隙
+# 托盘围边：把手机"嵌"进托盘，这样 φ=0 朝内、φ=180 朝外，两个方向手机都不凸出框
+RIM_H = 7.4                   # 围边高度：比手机屏幕高出 0.7mm（薄唇边，既包住手机又不硌手）
+RIM_STEP_Z = 4.0              # 围边下半段的高度（这一段外轮廓内缩，避免翻转时扫掠半径过大）
+RIM_INSET = 1.2               # 下半段内缩量
+RIM_NOTCH_W = 26.0            # ±X 两端手指缺口宽度（沿 Y）
+RIM_NOTCH_D = 5.2            # 缺口要切穿到手机挖空面以内，否则会留下 0.05mm 亚体素薄片
 
 MAGSAFE_RING_OUT = 56.0
 MAGSAFE_RING_IN = 44.0
@@ -218,13 +223,17 @@ POSE_SWITCH_MID = (OPEN_GAME, 90.0)
 
 
 def sweep_radius(phone: Phone | None = None) -> tuple[float, float]:
-    """翻转扫掠半径（托盘板, 手机）。"""
+    """翻转扫掠半径（托盘, 手机）。托盘要把新加的围边算进去。"""
     ph = phone or PHONES[DEFAULT_PHONE]
-    plate = ((PLATE_D / 2) ** 2 + (PLATE_T / 2) ** 2) ** 0.5
-    # 手机相对于托盘轴：y 半深 W/2，z 从 (LID_Z_INNER - PIVOT_Z) 到 (LID_Z_INNER - PIVOT_Z + T)
-    z_near = LID_Z_INNER - PIVOT_Z
-    z_far = z_near + ph.T
-    z_ext = max(abs(z_near), abs(z_far))
+    plate = 0.0
+    # 上半段：满轮廓；下半段外轮廓内缩 RIM_INSET，扫掠半径要按缩后的算
+    for dz, half in ((PLATE_T / 2, PLATE_D / 2),
+                     (PLATE_T / 2 + RIM_H - RIM_STEP_Z, PLATE_D / 2),
+                     (PLATE_T / 2 + RIM_H, PLATE_D / 2 - RIM_INSET)):
+        plate = max(plate, (half ** 2 + dz ** 2) ** 0.5)
+    z_lo = PIVOT_Z - PLATE_T / 2
+    z_back = z_lo + PHONE_RECESS - PHONE_GAP
+    z_ext = max(abs(z_back - ph.T - PIVOT_Z), abs(z_back - PIVOT_Z))
     phone_r = ((ph.W / 2) ** 2 + z_ext ** 2) ** 0.5
     return plate, phone_r
 

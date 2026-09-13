@@ -206,15 +206,29 @@ def build_cradle(phone=None):
 
     plate = prism(P.PLATE_W, P.PLATE_D, P.PLATE_R, z_lo, z_hi, 0.0, P.PIVOT_Y)
 
-    # 手机托面：0.8mm 沉台 + 周边 1.2mm 挡墙
-    # 挡墙外缘必须收在托盘板的扫掠圆内（否则翻转时撞盖的前后横梁）
+    # 手机托面：0.8mm 沉台 + 周边挡墙；挡墙外缘收在托盘板扫掠圆内
     rec_w, rec_d = ph.L + 2 * P.PHONE_FIT, ph.W + 2 * P.PHONE_FIT
-    wall_out = prism(P.PLATE_W, P.PLATE_D, P.PLATE_R, z_lo, z_lo + 2.0, 0.0, P.PIVOT_Y)
-    wall_in = prism(rec_w, rec_d, ph.R, z_lo - 1.0, z_lo + 3.0, 0.0, P.PIVOT_Y)
-    walls = diff(wall_out, wall_in)
+    rim_top = z_lo                                    # 围边朝手机那一侧伸展
+    rim_bot = z_lo - P.RIM_H
+    # 手机形状的"挖空刀"：要贯穿挡墙 + 围边的整个高度，否则围边下半段会变成实心板
+    phone_cut = prism(rec_w, rec_d, ph.R, rim_bot - 1.0, z_lo + 3.0, 0.0, P.PIVOT_Y)
+    walls = diff(prism(P.PLATE_W, P.PLATE_D, P.PLATE_R, z_lo, z_lo + 2.0, 0.0, P.PIVOT_Y),
+                 phone_cut)
     recess = prism(rec_w, rec_d, ph.R, z_lo - 1.0, z_lo + P.PHONE_RECESS, 0.0, P.PIVOT_Y)
 
-    cradle = diff(union(plate, walls), recess)
+    # 围边：把手机"嵌"进托盘（φ=0 朝内、φ=180 朝外，两个方向都不凸出框）
+    rim_hi = prism(P.PLATE_W, P.PLATE_D, P.PLATE_R, rim_bot + P.RIM_STEP_Z, rim_top + 1.0,
+                   0.0, P.PIVOT_Y)
+    rim_lo = prism(P.PLATE_W - 2 * P.RIM_INSET, P.PLATE_D - 2 * P.RIM_INSET,
+                   max(2.0, P.PLATE_R - P.RIM_INSET), rim_bot, rim_bot + P.RIM_STEP_Z + 0.5,
+                   0.0, P.PIVOT_Y)
+    rim = diff(union(rim_hi, rim_lo), phone_cut)
+    # ±X 两端的取手机缺口（切穿围边）
+    notch = [box((2 * P.RIM_NOTCH_D, P.RIM_NOTCH_W, P.RIM_H + 6.0),
+                 center=(sx * (P.PLATE_W / 2 - P.RIM_NOTCH_D + 0.01), P.PIVOT_Y,
+                         rim_bot + P.RIM_H / 2)) for sx in (1, -1)]
+
+    cradle = diff(union(plate, walls, rim), recess, *notch)
 
     # 四角手指位
     cuts = [box((16.0, 16.0, 6.0), center=(sx * (ph.L / 2 + 2.0),

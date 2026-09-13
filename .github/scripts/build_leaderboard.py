@@ -18,11 +18,14 @@ import sys
 import urllib.request
 
 API = "https://api.github.com"
-GAMES = [("run", "跑酷"), ("tetris", "俄罗斯方块"), ("break", "打砖块")]
+GAMES = [("run", "跑酷"), ("tetris", "俄罗斯方块"), ("break", "打砖块"),
+         ("snake", "贪吃蛇"), ("flappy", "Flappy")]
 ALIASES = {
     "run": ["run", "跑酷", "platformer", "平台"],
     "tetris": ["tetris", "俄罗斯方块", "方块"],
     "break": ["break", "breakout", "打砖块", "砖块"],
+    "snake": ["snake", "贪吃蛇", "蛇"],
+    "flappy": ["flappy", "fly", "小鸟", "飞扬"],
 }
 MAX_SCORE = 100_000_000          # 明显不可能的成绩直接丢掉
 TITLE_RE = re.compile(r"\[\s*SCORE\s*\]", re.I)

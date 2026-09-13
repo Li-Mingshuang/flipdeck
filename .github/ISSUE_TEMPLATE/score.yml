@@ -17,6 +17,8 @@ body:
         - tetris（俄罗斯方块）
         - break（打砖块）
         - run（跑酷）
+        - snake（贪吃蛇）
+        - flappy（Flappy）
     validations:
       required: true
   - type: input

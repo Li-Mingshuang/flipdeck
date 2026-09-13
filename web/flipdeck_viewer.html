@@ -75,6 +75,7 @@
       <option value="game">▶ 可玩的游戏（键盘）</option>
       <option value="home">主屏幕（生成）</option>
       <option value="user">自定义图片</option>
+      <option value="board">🏆 排行榜（实时）</option>
       <option value="off">灭屏</option>
     </select></div>
   <div class="row"><label>游戏</label>
@@ -82,6 +83,8 @@
       <option value="run">跑酷（平台跳跃）</option>
       <option value="tetris">俄罗斯方块（十字键）</option>
       <option value="break">打砖块（摇杆）</option>
+      <option value="snake">贪吃蛇（十字键）</option>
+      <option value="flappy">Flappy（单键）</option>
     </select></div>
   <div class="row"><label>屏幕旋转</label>
     <select id="rot">
@@ -137,6 +140,8 @@
   <span style="color:#8b9bb0">跑酷：A/D 或 ←→ 移动、空格跳<br>
   俄罗斯方块：← → 移动、↑ 旋转、↓ 加速、空格直落<br>
   打砖块：A/D 或 ←→ 移动挡板、空格发球<br>
+  贪吃蛇：← ↑ ↓ → 或 WASD 转向<br>
+  Flappy：空格 / ↑ / A 起飞<br>
   摇杆帽可以直接用鼠标拖，按键都会跟着动</span>
 </div>
 <div class="panel" id="stat">—</div>
@@ -786,9 +791,232 @@ function crtOverlay() {
   sg.fillStyle = gl2; sg.fillRect(0, 0, SW, SH);
 }
 
+// ============================== 贪吃蛇 ==============================
+const SNK = { cols: 24, rows: 11, cell: 34, snake: [], dir: [1, 0], want: [1, 0], food: null,
+              t: 0, interval: 0.16, score: 0, over: false, msg: "", msgT: 0, seed: 5, grow: 0 };
+function snkRnd() { SNK.seed = (SNK.seed * 1103515245 + 12345) & 0x7fffffff; return SNK.seed / 0x7fffffff; }
+function snkFree() {
+  for (let i = 0; i < 400; i++) {
+    const x = Math.floor(snkRnd() * SNK.cols), y = Math.floor(snkRnd() * SNK.rows);
+    if (!SNK.snake.some(function (s) { return s.x === x && s.y === y; })) return { x: x, y: y };
+  }
+  return { x: 0, y: 0 };
+}
+function newSnake() {
+  SNK.snake = [{ x: 6, y: 5 }, { x: 5, y: 5 }, { x: 4, y: 5 }];
+  SNK.dir = [1, 0]; SNK.want = [1, 0]; SNK.t = 0; SNK.score = 0; SNK.over = false;
+  SNK.interval = 0.16; SNK.grow = 0; SNK.food = snkFree(); SNK.msg = "SNAKE"; SNK.msgT = 1.0;
+}
+newSnake();
+function stepSnake(dt) {
+  if (once("enter") && SNK.over) { newSnake(); return; }
+  if (SNK.msgT > 0) SNK.msgT -= dt;
+  if (SNK.over) return;
+  const set = function (dx, dy) {
+    if (dx === -SNK.dir[0] && dy === -SNK.dir[1]) return;   // 不允许 180° 掉头
+    SNK.want = [dx, dy];
+  };
+  if (once("arrowleft") || once("a")) set(-1, 0);
+  if (once("arrowright") || once("d")) set(1, 0);
+  if (once("arrowup") || once("w")) set(0, -1);
+  if (once("arrowdown") || once("s")) set(0, 1);
+  SNK.t += dt;
+  if (SNK.t < SNK.interval) return;
+  SNK.t = 0;
+  SNK.dir = SNK.want;
+  const head = { x: SNK.snake[0].x + SNK.dir[0], y: SNK.snake[0].y + SNK.dir[1] };
+  if (head.x < 0 || head.y < 0 || head.x >= SNK.cols || head.y >= SNK.rows ||
+      SNK.snake.some(function (s) { return s.x === head.x && s.y === head.y; })) {
+    SNK.over = true; SNK.msg = "GAME OVER"; SNK.msgT = 3.0;
+    setLocalBest("snake", SNK.score);
+    return;
+  }
+  SNK.snake.unshift(head);
+  if (SNK.food && head.x === SNK.food.x && head.y === SNK.food.y) {
+    SNK.score += 10; SNK.food = snkFree();
+    SNK.interval = Math.max(0.07, SNK.interval - 0.004);
+    SNK.msg = "+10"; SNK.msgT = 0.4;
+  } else {
+    SNK.snake.pop();
+  }
+}
+function drawSnake() {
+  sg.drawImage(bgc, 0, 0);
+  sg.fillStyle = "rgba(6,8,14,.78)"; sg.fillRect(0, 0, SW, SH);
+  const c = SNK.cell, fw = c * SNK.cols, fh = c * SNK.rows;
+  const fx = 36, fy = (SH - fh) / 2;
+  sg.fillStyle = "rgba(0,0,0,.42)"; sg.fillRect(fx - 6, fy - 6, fw + 12, fh + 12);
+  sg.strokeStyle = "rgba(255,255,255,.10)"; sg.lineWidth = 1;
+  for (let x = 0; x <= SNK.cols; x++) { sg.beginPath(); sg.moveTo(fx + x*c, fy); sg.lineTo(fx + x*c, fy + fh); sg.stroke(); }
+  for (let y = 0; y <= SNK.rows; y++) { sg.beginPath(); sg.moveTo(fx, fy + y*c); sg.lineTo(fx + fw, fy + y*c); sg.stroke(); }
+  if (SNK.food) {
+    sg.fillStyle = "#ff6b4a";
+    sg.beginPath(); sg.arc(fx + SNK.food.x*c + c/2, fy + SNK.food.y*c + c/2, c*0.34, 0, 6.3); sg.fill();
+  }
+  SNK.snake.forEach(function (s, i) {
+    sg.fillStyle = i === 0 ? "#8ef07a" : "#4dc46a";
+    const pad = i === 0 ? 2 : 3;
+    sg.fillRect(fx + s.x*c + pad, fy + s.y*c + pad, c - pad*2, c - pad*2);
+  });
+  const px = fx + fw + 70;
+  sg.fillStyle = "#fff8e1"; sg.font = "bold 46px ui-monospace, monospace";
+  sg.fillText(String(SNK.score).padStart(5, "0"), px, fy + 70);
+  sg.font = "bold 24px ui-monospace, monospace"; sg.fillStyle = "rgba(255,255,255,.8)";
+  sg.fillText("SCORE", px, fy + 100);
+  sg.fillText("速度 " + Math.round(1 / SNK.interval) + " 格/秒", px, fy + 180);
+  sg.fillStyle = "rgba(255,255,255,.55)"; sg.font = "22px ui-monospace, monospace";
+  sg.fillText("← ↑ ↓ → 或 WASD", px, fy + 250);
+  sg.fillText("转向，别撞墙/自己", px, fy + 280);
+  if (SNK.msgT > 0) {
+    sg.globalAlpha = Math.min(1, SNK.msgT * 2);
+    sg.textAlign = "center"; sg.font = "bold 62px ui-monospace, monospace";
+    sg.fillStyle = "rgba(0,0,0,.5)"; sg.fillText(SNK.msg, fx + fw/2 + 3, fy + fh/2 + 3);
+    sg.fillStyle = "#ffe08a"; sg.fillText(SNK.msg, fx + fw/2, fy + fh/2);
+    sg.textAlign = "left"; sg.globalAlpha = 1;
+  }
+  crtOverlay();
+}
+
+// ============================== Flappy（单键） ==============================
+const FLY = { y: 0, vy: 0, x: 0, pipes: [], t: 0, score: 0, over: false, started: false,
+              msg: "", msgT: 0, seed: 9 };
+function flyRnd() { FLY.seed = (FLY.seed * 1103515245 + 12345) & 0x7fffffff; return FLY.seed / 0x7fffffff; }
+const FLY_GAP = 200, FLY_PIPE_W = 96, FLY_SPACING = 430, FLY_G = 1500, FLY_FLAP = -470;
+function newFlappy() {
+  FLY.y = SH / 2; FLY.vy = 0; FLY.x = SW * 0.32; FLY.pipes = []; FLY.t = 0; FLY.score = 0;
+  FLY.over = false; FLY.started = false; FLY.msg = "FLAPPY"; FLY.msgT = 1.0; FLY.seed = 9;
+  for (let i = 0; i < 4; i++) flyPush(SW + 260 + i * FLY_SPACING);
+}
+function flyPush(x) {
+  const gapY = 120 + flyRnd() * (SH - 240 - FLY_GAP);
+  FLY.pipes.push({ x: x, gapY: gapY, scored: false });
+}
+newFlappy();
+function stepFlappy(dt) {
+  if (once("enter") && FLY.over) { newFlappy(); return; }
+  if (FLY.msgT > 0) FLY.msgT -= dt;
+  if (FLY.over) return;
+  const flap = once(" ") || once("arrowup") || once("w") || once("a");
+  if (flap) { FLY.vy = FLY_FLAP; FLY.started = true; }
+  if (!FLY.started) { FLY.y = SH / 2 + Math.sin(FLY.t * 3) * 14; FLY.t += dt; return; }
+  FLY.t += dt;
+  FLY.vy += FLY_G * dt;
+  FLY.y += FLY.vy * dt;
+  if (FLY.y < 16) { FLY.y = 16; FLY.vy = 0; }
+  if (FLY.y > SH - 16) {
+    FLY.over = true; FLY.msg = "GAME OVER"; FLY.msgT = 3.0; setLocalBest("flappy", FLY.score); return;
+  }
+  FLY.pipes.forEach(function (p) { p.x -= 250 * dt; });
+  while (FLY.pipes.length && FLY.pipes[0].x < -FLY_PIPE_W) {
+    FLY.pipes.shift();
+    const last = FLY.pipes.length ? FLY.pipes[FLY.pipes.length - 1].x : SW;
+    flyPush(Math.max(SW + 200, last + FLY_SPACING));
+  }
+  for (let i = 0; i < FLY.pipes.length; i++) {
+    const p = FLY.pipes[i];
+    if (!p.scored && p.x + FLY_PIPE_W < FLY.x - 20) {
+      p.scored = true; FLY.score += 1;
+      FLY.msg = "+1"; FLY.msgT = 0.35;
+    }
+    const hitX = FLY.x + 20 > p.x && FLY.x - 20 < p.x + FLY_PIPE_W;
+    const hitY = FLY.y - 18 < p.gapY || FLY.y + 18 > p.gapY + FLY_GAP;
+    if (hitX && hitY) {
+      FLY.over = true; FLY.msg = "GAME OVER"; FLY.msgT = 3.0;
+      setLocalBest("flappy", FLY.score); return;
+    }
+  }
+}
+function drawFlappy() {
+  sg.drawImage(bgc, 0, 0);
+  sg.fillStyle = "rgba(6,8,14,.35)"; sg.fillRect(0, 0, SW, SH);
+  FLY.pipes.forEach(function (p) {
+    sg.fillStyle = "#3f9b52";
+    sg.fillRect(p.x, 0, FLY_PIPE_W, p.gapY);
+    sg.fillRect(p.x, p.gapY + FLY_GAP, FLY_PIPE_W, SH - p.gapY - FLY_GAP);
+    sg.fillStyle = "rgba(255,255,255,.22)";
+    sg.fillRect(p.x + 10, 0, 12, p.gapY);
+    sg.fillRect(p.x + 10, p.gapY + FLY_GAP, 12, SH - p.gapY - FLY_GAP);
+    sg.fillStyle = "#2f7a3f";
+    sg.fillRect(p.x - 6, p.gapY - 26, FLY_PIPE_W + 12, 26);
+    sg.fillRect(p.x - 6, p.gapY + FLY_GAP, FLY_PIPE_W + 12, 26);
+  });
+  const tilt = Math.max(-0.5, Math.min(0.9, FLY.vy / 900));
+  sg.save(); sg.translate(FLY.x, FLY.y); sg.rotate(tilt);
+  sg.fillStyle = "#f2c94c";
+  sg.beginPath(); sg.ellipse(0, 0, 26, 20, 0, 0, 6.3); sg.fill();
+  sg.fillStyle = "#f7e08a"; sg.beginPath(); sg.ellipse(-6, -6, 12, 9, 0, 0, 6.3); sg.fill();
+  sg.fillStyle = "#22262c"; sg.beginPath(); sg.arc(10, -6, 4.5, 0, 6.3); sg.fill();
+  sg.fillStyle = "#e8934d";
+  sg.beginPath(); sg.moveTo(22, 2); sg.lineTo(38, 8); sg.lineTo(22, 14); sg.closePath(); sg.fill();
+  sg.restore();
+  sg.font = "bold 64px ui-monospace, monospace"; sg.fillStyle = "#fff8e1";
+  sg.textAlign = "center"; sg.fillText(String(FLY.score), SW/2, 92);
+  sg.textAlign = "left";
+  sg.fillStyle = "rgba(255,255,255,.6)"; sg.font = "22px ui-monospace, monospace";
+  if (!FLY.started) sg.fillText("空格 / ↑ / A 起飞", SW/2 - 110, SH - 40);
+  if (FLY.msgT > 0) {
+    sg.globalAlpha = Math.min(1, FLY.msgT * 2);
+    sg.textAlign = "center"; sg.font = "bold 66px ui-monospace, monospace";
+    sg.fillStyle = "rgba(0,0,0,.5)"; sg.fillText(FLY.msg, SW/2 + 3, SH/2 + 3);
+    sg.fillStyle = "#ffe08a"; sg.fillText(FLY.msg, SW/2, SH/2);
+    sg.textAlign = "left"; sg.globalAlpha = 1;
+  }
+  crtOverlay();
+}
+
+// ============================== 排行榜直接画在手机屏幕上 ==============================
+const BOARD_NAMES = { run: "跑酷", tetris: "俄罗斯方块", break: "打砖块", snake: "贪吃蛇", flappy: "Flappy" };
+let boardData = null, boardTried = false;
+function loadBoardData(force) {
+  if (boardData && !force) return Promise.resolve(boardData);
+  if (boardTried && !force) return Promise.resolve(null);
+  boardTried = true;
+  return fetch("leaderboard.json", { cache: "no-store" }).then(function (r) {
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }).then(function (d) { boardData = d; return d; }).catch(function () { return null; });
+}
+function drawBoardScreen() {
+  sg.fillStyle = "#0b1220"; sg.fillRect(0, 0, SW, SH);
+  const g = sg.createLinearGradient(0, 0, SW, SH);
+  g.addColorStop(0, "rgba(60,110,220,.35)"); g.addColorStop(1, "rgba(20,40,90,.10)");
+  sg.fillStyle = g; sg.fillRect(0, 0, SW, SH);
+  sg.fillStyle = "#ffe08a"; sg.font = "bold 44px ui-monospace, monospace";
+  sg.fillText("🏆  flipdeck 排行榜  TOP 10", 44, 66);
+  sg.font = "20px ui-monospace, monospace"; sg.fillStyle = "rgba(200,220,255,.75)";
+  const up = boardData ? ("更新于 " + boardData.updated + " UTC") : "（还没读到榜单：本地要跑 python make_leaderboard 同步 docs/）";
+  sg.fillText(up, 46, 96);
+  const keys = ["run", "tetris", "break", "snake", "flappy"];
+  const colW = (SW - 80) / keys.length;
+  keys.forEach(function (k, i) {
+    const x = 44 + i * colW;
+    sg.fillStyle = "rgba(255,255,255,.92)"; sg.font = "bold 26px ui-monospace, monospace";
+    sg.fillText(BOARD_NAMES[k] || k, x, 156);
+    sg.fillStyle = "rgba(140,170,220,.6)"; sg.fillRect(x, 168, colW - 26, 2);
+    const rows = (boardData && boardData.games && boardData.games[k]) || [];
+    sg.font = "22px ui-monospace, monospace";
+    if (!rows.length) {
+      sg.fillStyle = "rgba(190,210,240,.55)";
+      sg.fillText("暂无成绩", x, 204);
+    }
+    rows.slice(0, 8).forEach(function (r, j) {
+      const y = 206 + j * 36;
+      sg.fillStyle = j === 0 ? "#ffd166" : "rgba(220,235,255,.9)";
+      sg.fillText(String(j + 1).padStart(2) + ". " + String(r.user).slice(0, 10), x, y);
+      sg.fillStyle = j === 0 ? "#ffd166" : "rgba(160,220,180,.95)";
+      sg.textAlign = "right";
+      sg.fillText(String(r.score), x + colW - 40, y);
+      sg.textAlign = "left";
+    });
+  });
+  sg.fillStyle = "rgba(190,210,240,.7)"; sg.font = "20px ui-monospace, monospace";
+  sg.fillText("玩完点左侧「提交成绩」→ 自动开 issue → Actions 汇总进 README 与本页", 46, SH - 22);
+  crtOverlay();
+}
+
 // ============================== 排行榜（GitHub Issue 提交 + Actions 汇总） ==============================
 const REPO = "Li-Mingshuang/flipdeck";
-const GAME_KEY = { run: "run", tetris: "tetris", break: "break" };
+const GAME_KEY = { run: "run", tetris: "tetris", break: "break", snake: "snake", flappy: "flappy" };
 function localBest(g) { const v = localStorage.getItem("flipdeck.best." + g); return v ? parseInt(v, 10) : 0; }
 function setLocalBest(g, s) {
   if (s > localBest(g)) { localStorage.setItem("flipdeck.best." + g, String(s)); }
@@ -797,11 +1025,14 @@ function setLocalBest(g, s) {
 function refreshBestLine() {
   const e = document.getElementById("best");
   if (!e) return;
-  e.textContent = "跑酷 " + localBest("run") + " ｜ 方块 " + localBest("tetris") + " ｜ 砖块 " + localBest("break");
+  e.textContent = "跑酷 " + localBest("run") + " ｜ 方块 " + localBest("tetris") +
+    " ｜ 砖块 " + localBest("break") + " ｜ 蛇 " + localBest("snake") + " ｜ 飞 " + localBest("flappy");
 }
 function currentScore() {
   if (state.game === "tetris") return TET.score;
   if (state.game === "break") return BRK.score;
+  if (state.game === "snake") return SNK.score;
+  if (state.game === "flappy") return FLY.score;
   return G.score;
 }
 document.getElementById("submit").addEventListener("click", function () {
@@ -825,11 +1056,9 @@ document.getElementById("boardToggle").addEventListener("click", function () {
 function loadBoard() {
   const pre = document.getElementById("board");
   pre.textContent = "加载中…";
-  fetch("leaderboard.json", { cache: "no-store" }).then(function (r) {
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return r.json();
-  }).then(function (d) {
-    const names = { run: "跑酷", tetris: "俄罗斯方块", break: "打砖块" };
+  loadBoardData(true).then(function (d) {
+    if (!d) throw new Error("读取失败");
+    const names = { run: "跑酷", tetris: "俄罗斯方块", break: "打砖块", snake: "贪吃蛇", flappy: "Flappy" };
     let out = "更新于 " + d.updated + " (UTC)\n";
     Object.keys(names).forEach(function (g) {
       out += "\n【" + names[g] + "】\n";
@@ -1044,6 +1273,8 @@ el.game.addEventListener("change", function () {
   state.game = el.game.value;
   if (state.game === "tetris") newTetris();
   else if (state.game === "break") newBreak();
+  else if (state.game === "snake") newSnake();
+  else if (state.game === "flappy") newFlappy();
   else newLevel(G.level);
 });
 el.rot.addEventListener("change", function () { state.rot = el.rot.value; setRot(state.rot); });
@@ -1144,9 +1375,12 @@ function frame(now) {
   if (anim && !anim(now)) anim = null;
   if (cam.spin) cam.yaw += 0.35*dt;
   updatePress(dt);
+  if (state.screen === "board") { loadBoardData(false); drawBoardScreen(); }
   if (state.screen === "game") {
     if (state.game === "tetris") { stepTetris(dt); drawTetris(); }
     else if (state.game === "break") { stepBreak(dt); drawBreak(); }
+    else if (state.game === "snake") { stepSnake(dt); drawSnake(); }
+    else if (state.game === "flappy") { stepFlappy(dt); drawFlappy(); }
     else { step(dt); drawScreen(); }
   }
 
