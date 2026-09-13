@@ -65,7 +65,7 @@ VOXEL_SMALL = 0.28  # 小件体素
 # ----------------------------------------------------------------------------- deck（控制下半部）
 DECK_W = 179.0          # X 总宽
 DECK_D = 88.0           # Y 总深
-DECK_H = 20.0           # 高度（边缘顶面 z=20，也是与盖的贴合面）
+DECK_H = 19.0           # 高度（边缘顶面，也是与盖的贴合面；井深随之 6.0）
 DECK_FRONT = -DECK_D / 2
 DECK_BACK = DECK_D / 2
 
@@ -120,9 +120,9 @@ PCB_BOSS_PILOT = 1.9
 PCB_BOSS_TOP = 8.0
 
 # 铰链（凸耳全部在两侧，避免进入托盘翻转扫掠圆）
-HINGE_Y = 52.0                # 转轴轴线 y
-HINGE_Z = 27.0                # 转轴轴线 z
-HINGE_BARREL_R = 8.2          # 凸耳外半径
+HINGE_Y = 49.0                # 转轴轴线 y（越靠前，合盖后凸耳伸出越少）
+HINGE_Z = DECK_H + 7.0        # 转轴轴线 z（比底座顶面高 7：恰好容纳凸耳半径 + 余量）
+HINGE_BARREL_R = 7.0          # 凸耳外半径（细化：原 8.2）
 HINGE_PIN_D = 4.0             # 销轴（M4 螺杆）直径
 HINGE_BORE = 4.3              # 销孔
 HINGE_X_DECK = (30.0, 79.0)   # deck 侧凸耳 |x| 范围
@@ -135,20 +135,21 @@ HINGE_DETENT_DEPTH = 1.3
 HINGE_ANGLES = (0.0, 110.0, 180.0)
 
 # ----------------------------------------------------------------------------- lid（盖 + 框）
-LID_H = 16.0                            # 盖的高度
 LID_Z_INNER = DECK_H - HINGE_Z          # -7.0  盖内表面（贴合 deck 顶面）
-LID_Z_OUTER = LID_Z_INNER + LID_H       # +9.0  盖外表面
+PLATE_OFFSET = 8.5                      # 托盘板底面到盖内表面的距离（手机厚 + 沉台 + 间隙 + 余量）
+PLATE_T = 6.6                           # 板厚（减薄：原 7.0）；翻转 180° 后占同一层
+LID_H = PLATE_OFFSET + PLATE_T          # 盖高 = 8.5 + 6.6 = 15.1（原 16.0）
+LID_Z_OUTER = LID_Z_INNER + LID_H       # 盖外表面
 LID_RAIL_X = (84.5, 88.5)               # 两侧导轨 |x| 范围
 LID_BODY_Y = (-94.0, -9.2)              # 盖框前后范围（lid 局部）
 LID_BAR_FRONT = (-94.0, -90.0)
 LID_BAR_BACK = (-12.0, -9.2)
 
 PIVOT_Y = -51.0               # 托盘轴（lid 局部 y = 手机中心线）
-PIVOT_Z = LID_Z_INNER + 12.5  # +5.5 = 托盘板中面（板占 z_l ∈ [2,9]，翻转后占同一层）
+PIVOT_Z = LID_Z_INNER + PLATE_OFFSET + PLATE_T / 2   # 板中面；翻转后占同一层
 PIVOT_BORE = 6.3
 AXLE_D = 6.0
 
-PLATE_T = 7.0                 # 板厚；翻转 180° 后占据同一层 [PIVOT_Z±3.5]
 PLATE_W = 160.0
 PLATE_D = 74.5
 PLATE_R = 6.0

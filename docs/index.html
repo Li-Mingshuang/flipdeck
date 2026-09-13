@@ -56,16 +56,17 @@
     <span class="val" id="phiV">0°</span></div>
 
   <div class="btns">
-    <button class="pri" data-pose="game">展开游戏</button>
+    <button data-pose="game">展开游戏</button>
     <button data-pose="closed">合盖收纳</button>
     <button data-pose="phone">手机模式</button>
-    <button data-pose="mid">换形态中</button>
+    <button data-pose="daily">日常（无底座）</button>
   </div>
   <div class="btns">
     <button data-anim="flip">▶ 翻转</button>
     <button data-anim="open">▶ 开合</button>
     <button data-anim="full">▶ 完整换形态</button>
   </div>
+  <div class="sub" id="totals" style="margin:8px 0 0">—</div>
 
   <div class="hr"></div>
 
@@ -75,6 +76,11 @@
       <option value="home">主屏幕（生成）</option>
       <option value="user">自定义图片</option>
       <option value="off">灭屏</option>
+    </select></div>
+  <div class="row"><label>游戏</label>
+    <select id="game">
+      <option value="run">跑酷（平台跳跃）</option>
+      <option value="race">赛车（伪 3D）</option>
     </select></div>
   <div class="row"><label>屏幕旋转</label>
     <select id="rot">
@@ -93,6 +99,7 @@
 
   <div class="btns">
     <button data-tog="phone" class="on">手机</button>
+    <button data-tog="deck" class="on">底座</button>
     <button data-tog="ctrl" class="on">键帽/摇杆</button>
     <button data-tog="lid" class="on">盖框</button>
     <button data-tog="spin">自动旋转</button>
@@ -122,12 +129,23 @@
 
 <script>
 "use strict";
-// ============================== 常量（与 flipdeck/params.py 一致） ==============================
-const HINGE = [0, 52.0, 27.0], PIVOT = [0, -51.0, 5.5];
-const OPEN_GAME = 110.0, DTOR = Math.PI / 180;
-const PH = { L: 146.7, W: 71.5, T: 7.4, zBack: 2.7, bezel: 4.0 };
-const STICK_Z = 12.6;                      // 摇杆摆动中心（与 parts.py 的 STICK_PIVOT_Z 一致）
+// ============================== 常量：从 params.json 读取（由 web_export.py 生成，避免手抄漂移） ==========
+let HINGE = [0, 49.0, 26.0], PIVOT = [0, -51.0, 4.8];
+let OPEN_GAME = 110.0, STICK_Z = 12.6;
+const DTOR = Math.PI / 180;
+const PH = { L: 146.7, W: 71.5, T: 7.4, zBack: -2.3, bezel: 3.0 };
 const SW = 1200, SH = 520;                 // 屏幕贴图分辨率（横向，与手机长边一致）
+let ready = false;
+function boot() { ready = true; setPose(OPEN_GAME, 0); requestAnimationFrame(frame); }
+fetch("params.json").then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+  if (d) {
+    HINGE = d.hinge; PIVOT = d.pivot; OPEN_GAME = d.open_game; STICK_Z = d.stick_z;
+    PH.L = d.L; PH.W = d.W; PH.T = d.T; PH.zBack = d.phone_z_back;
+    const t = document.getElementById("totals");
+    if (t) t.textContent = "合盖游戏 " + d.totals.closed_game + "mm ｜ 合盖手机模式 " +
+      d.totals.closed_phone + "mm ｜ 拔掉底座(日常) " + d.totals.daily_no_deck + "mm";
+  }
+}).catch(function () { }).then(boot);
 
 // ============================== 矩阵 ==============================
 function mat4() { return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]); }
@@ -154,7 +172,8 @@ function modelMatrices(th, ph) {
 }
 
 // ============================== 相机 ==============================
-const cam = { yaw: 38 * DTOR, pitch: 20 * DTOR, dist: 620, target: [0, 0, 60], fov: 34 * DTOR, spin: false };
+const cam = { yaw: -55 * DTOR, pitch: 16 * DTOR, dist: 400, target: [0, 25, 56], fov: 34 * DTOR, spin: false };
+const CAM_HOME = { yaw: -55, pitch: 16, dist: 400, target: [0, 25, 56] };
 function eyePos() {
   return [cam.target[0] + cam.dist * Math.cos(cam.pitch) * Math.cos(cam.yaw),
           cam.target[1] + cam.dist * Math.cos(cam.pitch) * Math.sin(cam.yaw),
@@ -473,6 +492,148 @@ function drawScreen() {
   }
 }
 
+// ============================== 赛车（伪 3D） ==============================
+const HORIZON = 132;
+const RC = { z: 0, speed: 0, lateral: 0, dist: 0, best: 0, crash: 0, cars: [], trees: [], dashes: [],
+             msg: "", msgT: 0, seed: 7 };
+function rnd() { RC.seed = (RC.seed * 1103515245 + 12345) & 0x7fffffff; return RC.seed / 0x7fffffff; }
+function newRace() {
+  RC.seed = 7; RC.z = 0; RC.speed = 0; RC.lateral = 0; RC.dist = 0; RC.crash = 0; RC.msg = "GO!"; RC.msgT = 1.0;
+  RC.cars = []; RC.trees = []; RC.dashes = [];
+  for (let i = 0; i < 26; i++) RC.cars.push({ z: 220 + i*260 + rnd()*160, x: (rnd()*2 - 1) * 0.72, sp: 0.45 + rnd()*0.4 });
+  for (let i = 0; i < 60; i++) RC.trees.push({ z: 120 + i*180 + rnd()*90, side: rnd() < .5 ? -1 : 1, kind: rnd() < .3 ? 1 : 0 });
+  for (let i = 0; i < 40; i++) RC.dashes.push(i * 1.0);
+}
+newRace();
+function rproj(z) {                                  // 距离 -> 屏幕 y 与缩放
+  const k = 1 / (1 + Math.max(0.06, z) * 0.0125);
+  return { y: HORIZON + (SH - HORIZON) * k, s: k };
+}
+function roadCenter(y) {                             // 弯道：远处整体偏移
+  const t = (y - HORIZON) / (SH - HORIZON);          // 0 远 → 1 近
+  return SW / 2 + (1 - t) * (1 - t) * RC.curveOff * 260;
+}
+function stepRace(dt) {
+  const ax = keys.axisL[0];
+  const boost = keys.jump() ? 1.35 : 1.0;
+  const brake = keys.axisL[1] > 0.1 || keysDown["s"];
+  const target = brake ? 0.22 : 1.0;
+  RC.speed += (target - RC.speed) * Math.min(1, dt * (brake ? 3.2 : 0.55));
+  RC.speed = Math.max(0.12, Math.min(1, RC.speed));
+  const v = RC.speed * boost;
+  RC.z += v * 620 * dt;
+  RC.dist += v * 620 * dt / 1000;
+  RC.lateral += ax * dt * 1.5;
+  RC.lateral = Math.max(-1.05, Math.min(1.05, RC.lateral));
+  if (Math.abs(RC.lateral) > 1.0) RC.speed *= 0.985;  // 冲出路面掉速
+  RC.curveOff = Math.sin(RC.z / 900) * 0.7 + Math.sin(RC.z / 340) * 0.35;
+  if (RC.crash > 0) RC.crash -= dt;
+  if (RC.msgT > 0) RC.msgT -= dt;
+  RC.cars.forEach(function (c) {
+    c.z -= v * 620 * dt * c.sp;
+    if (c.z < -40) { c.z = 2600 + rnd() * 900; c.x = (rnd()*2 - 1) * 0.72; }
+    if (c.z < 130 && c.z > 20 && Math.abs(c.x - RC.lateral) < 0.30 && RC.crash <= 0) {
+      RC.crash = 0.9; RC.speed *= 0.55; RC.msg = "CRASH!"; RC.msgT = 0.8;
+      RC.best = Math.max(RC.best, Math.floor(RC.dist));
+    }
+  });
+  RC.dashes = RC.dashes.map(function (d) { let x = d - v * dt * 6.2; return x < 0 ? x + 4 : x; });
+}
+function drawCarSprite(g, x, y, s, color, flip) {
+  const w = 86 * s, h = 54 * s;
+  g.fillStyle = "rgba(0,0,0,.30)";
+  g.beginPath(); g.ellipse(x, y + h*0.5, w*0.52, h*0.22, 0, 0, 6.3); g.fill();
+  g.fillStyle = color;
+  g.beginPath();
+  g.moveTo(x - w/2, y + h/2); g.lineTo(x - w/2 + w*0.12, y - h/2); g.lineTo(x + w/2 - w*0.12, y - h/2);
+  g.lineTo(x + w/2, y + h/2); g.closePath(); g.fill();
+  g.fillStyle = "rgba(255,255,255,.55)";                       // 车窗
+  g.fillRect(x - w*0.22, y - h*0.28, w*0.44, h*0.30);
+  g.fillStyle = "rgba(0,0,0,.35)";
+  g.fillRect(x - w*0.44, y + h*0.30, w*0.20, h*0.16);
+  g.fillRect(x + w*0.24, y + h*0.30, w*0.20, h*0.16);
+}
+function drawRace() {
+  // 天空 + 远山（复用背景图的上半部分）
+  sg.drawImage(bgc, 0, 0, SW, SH*0.62, 0, 0, SW, HORIZON + 26);
+  sg.fillStyle = "#1d3a26"; sg.fillRect(0, HORIZON + 20, SW, SH - HORIZON - 20);   // 草地
+  const shake = RC.crash > 0 ? Math.sin(RC.crash * 60) * 5 * RC.crash : 0;
+  sg.save(); sg.translate(shake, 0);
+  // 路面：远窄近宽的梯形（带弯道偏移）
+  const cy0 = roadCenter(HORIZON + 20), cy1 = roadCenter(SH);
+  const hw0 = 150, hw1 = 520;
+  sg.fillStyle = "#3a3f47";
+  sg.beginPath(); sg.moveTo(cy0 - hw0, HORIZON + 20); sg.lineTo(cy0 + hw0, HORIZON + 20);
+  sg.lineTo(cy1 + hw1, SH); sg.lineTo(cy1 - hw1, SH); sg.closePath(); sg.fill();
+  // 路肩
+  sg.fillStyle = "#d8d8d8";
+  sg.beginPath(); sg.moveTo(cy0 - hw0 - 12, HORIZON + 20); sg.lineTo(cy0 - hw0, HORIZON + 20);
+  sg.lineTo(cy1 - hw1, SH); sg.lineTo(cy1 - hw1 - 40, SH); sg.closePath(); sg.fill();
+  sg.beginPath(); sg.moveTo(cy0 + hw0, HORIZON + 20); sg.lineTo(cy0 + hw0 + 12, HORIZON + 20);
+  sg.lineTo(cy1 + hw1 + 40, SH); sg.lineTo(cy1 + hw1, SH); sg.closePath(); sg.fill();
+  // 车道虚线（按 z 滚动）
+  RC.dashes.forEach(function (d) {
+    const p = rproj(d * 62 + 26);
+    if (p.y > SH - 4) return;
+    const cx = roadCenter(p.y), w = 26 * p.s, h = 30 * p.s;
+    sg.fillStyle = "rgba(255,255,255,.75)";
+    sg.fillRect(cx - 2 - w, p.y, w * 2, h * 0.35);
+    sg.fillRect(cx + 2, p.y, w * 2, h * 0.35);
+  });
+  // 路边树/杆
+  RC.trees.forEach(function (t) {
+    const p = rproj(t.z), cx = roadCenter(p.y) + t.side * (150 * p.s + 620 * p.s);
+    if (p.y > SH - 6 || p.s < 0.06) return;
+    if (t.kind) {
+      sg.fillStyle = "#2f5d2f";
+      sg.beginPath(); sg.ellipse(cx, p.y - 40*p.s, 26*p.s, 34*p.s, 0, 0, 6.3); sg.fill();
+      sg.fillStyle = "#5b3a20"; sg.fillRect(cx - 4*p.s, p.y - 12*p.s, 8*p.s, 26*p.s);
+    } else {
+      sg.fillStyle = "#c8ccd2";
+      sg.fillRect(cx - 3*p.s, p.y - 70*p.s, 6*p.s, 78*p.s);
+    }
+  });
+  // 对手车（按 z 排序，远的先画）
+  RC.cars.slice().sort(function (a, b) { return b.z - a.z; }).forEach(function (c) {
+    if (c.z < 12) return;
+    const p = rproj(c.z);
+    if (p.y > SH - 10) return;
+    const cx = roadCenter(p.y) + c.x * (170 * p.s + 460 * p.s);
+    drawCarSprite(sg, cx, p.y, Math.max(0.14, p.s * 1.5), c.sp > 0.7 ? "#e05a3c" : "#3f7fd0");
+  });
+  sg.restore();
+  // 玩家车
+  const py = SH - 66;
+  drawCarSprite(sg, SW/2 + RC.lateral * 330, py, 1.25, "#f2c94c");
+  // HUD
+  sg.font = "bold 30px ui-monospace, monospace"; sg.fillStyle = "#fff8e1";
+  const kmh = Math.round(RC.speed * 320);
+  sg.fillText(kmh + " km/h", 30, SH - 24);
+  sg.fillStyle = "rgba(255,255,255,.9)";
+  sg.fillText("DIST " + Math.floor(RC.dist) + " m", 30, 52);
+  sg.textAlign = "right";
+  sg.fillText("BEST " + RC.best + " m", SW - 30, 52);
+  sg.textAlign = "left";
+  // 速度条
+  sg.fillStyle = "rgba(0,0,0,.35)"; sg.fillRect(SW/2 - 160, SH - 40, 320, 16);
+  sg.fillStyle = kmh > 260 ? "#ff6b4a" : "#4dd07a";
+  sg.fillRect(SW/2 - 158, SH - 38, 316 * RC.speed, 12);
+  if (RC.msgT > 0) {
+    sg.globalAlpha = Math.min(1, RC.msgT * 2);
+    sg.font = "bold 74px ui-monospace, monospace"; sg.textAlign = "center";
+    sg.fillStyle = "rgba(0,0,0,.45)"; sg.fillText(RC.msg, SW/2 + 3, SH/2 + 3);
+    sg.fillStyle = "#ffe08a"; sg.fillText(RC.msg, SW/2, SH/2);
+    sg.textAlign = "left"; sg.globalAlpha = 1;
+  }
+  if (crtOn) {
+    sg.fillStyle = "rgba(0,0,0,.20)";
+    for (let y = 0; y < SH; y += 3) sg.fillRect(0, y, SW, 1);
+    const vg = sg.createRadialGradient(SW/2, SH/2, SH*0.30, SW/2, SH/2, SW*0.62);
+    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.42)");
+    sg.fillStyle = vg; sg.fillRect(0, 0, SW, SH);
+  }
+}
+
 // ============================== 键盘 ==============================
 const keysDown = {};
 const keys = {
@@ -554,26 +715,40 @@ try {
   texGame = makeTex(scr); texHome = makeTex(homeCanvas); texOff = makeTex(offCanvas);
 } catch (e) { fail("屏幕贴图初始化失败：" + e.message); }
 
-// 屏幕四边形（u 沿手机长边 X，v 沿短边 Y —— 横向游戏画面不会躺倒）
-const HZ = PH.L/2 - PH.bezel, HY0 = PIVOT[1] - PH.W/2 + PH.bezel, HY1 = PIVOT[1] + PH.W/2 - PH.bezel;
-const SZ = PH.zBack - PH.T - 0.05;
-const UVSET = {
-  "0":   [[0,1],[0,0],[1,0],[1,1]],
-  "90":  [[1,1],[0,1],[0,0],[1,0]],
-  "180": [[1,0],[1,1],[0,1],[0,0]],
-  "270": [[0,0],[1,0],[1,1],[0,1]],
+// 屏幕四边形：黑边 3mm、圆角与手机同心（= 手机轮廓向内偏移），u 沿手机长边（+X -> u=1）
+const SC_UVSET = {
+  "0":   function (u, v) { return [u, v]; },
+  "90":  function (u, v) { return [v, 1 - u]; },
+  "180": function (u, v) { return [1 - u, 1 - v]; },
+  "270": function (u, v) { return [1 - v, u]; },
 };
 let screenMesh = null, screenBuf = null, uvBuf = null;
 function buildScreen(rot) {
-  const uv = UVSET[rot] || UVSET["0"];
-  const cs = [[HZ,HY1],[HZ,HY0],[-HZ,HY0],[-HZ,HY1]];
-  const pos = [], uvs = [];
-  [[0,1,2],[0,2,3]].forEach(function (tri) {
-    tri.forEach(function (i) {
-      pos.push(cs[i][0], cs[i][1], SZ); uvs.push(uv[i][0], uv[i][1]);
-    });
+  const HX = PH.L/2 - PH.bezel;
+  const HY0 = PIVOT[1] - PH.W/2 + PH.bezel, HY1 = PIVOT[1] + PH.W/2 - PH.bezel;
+  const R = Math.max(1.0, 12.0 - PH.bezel);         // 显示区圆角（与手机同心）
+  const z = PH.zBack - PH.T - 0.05;
+  const cx1 = HX - R, cy0 = HY0 + R, cy1 = HY1 - R, cx0 = -HX + R;
+  const cs = [[cx1, cy0, -90], [cx1, cy1, 0], [cx0, cy1, 90], [cx0, cy0, 180]];
+  const seg = 10, pts = [];
+  cs.forEach(function (c) {
+    for (let i = 0; i <= seg; i++) {
+      const a = (c[2] + i * 90 / seg) * DTOR;
+      pts.push([c[0] + R * Math.cos(a), c[1] + R * Math.sin(a)]);
+    }
   });
-  return { pos: new Float32Array(pos), uv: new Float32Array(uvs), count: 6 };
+  const map = SC_UVSET[rot] || SC_UVSET["0"];
+  const cxm = 0.0, cym = (HY0 + HY1) / 2;
+  const pos = [], uvs = [];
+  const uvOf = function (x, y) { return map((x + HX) / (2 * HX), (y - HY0) / (HY1 - HY0)); };
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    [[cxm, cym], a, b].forEach(function (p) {
+      pos.push(p[0], p[1], z);
+      const uv = uvOf(p[0], p[1]); uvs.push(uv[0], uv[1]);
+    });
+  }
+  return { pos: new Float32Array(pos), uv: new Float32Array(uvs), count: pts.length * 3 };
 }
 screenBuf = gl.createBuffer(); uvBuf = gl.createBuffer();
 function setRot(r) {
@@ -638,11 +813,13 @@ canvas.addEventListener("wheel", function (e) {
 }, { passive: false });
 
 // ============================== UI ==============================
-const state = { theta: OPEN_GAME, phi: 0, showPhone: true, showCtrl: true, showLid: true, screen: "game", rot: "0" };
+const state = { theta: OPEN_GAME, phi: 0, showPhone: true, showCtrl: true, showLid: true,
+                showDeck: true, screen: "game", game: "run", rot: "0" };
 const el = { theta: document.getElementById("theta"), phi: document.getElementById("phi"),
              thetaV: document.getElementById("thetaV"), phiV: document.getElementById("phiV"),
              stat: document.getElementById("stat"), screen: document.getElementById("screen"),
-             rot: document.getElementById("rot"), crt: document.getElementById("crt") };
+             game: document.getElementById("game"), rot: document.getElementById("rot"),
+             crt: document.getElementById("crt") };
 function setPose(t, p) {
   state.theta = t; state.phi = p; el.theta.value = t; el.phi.value = p;
   el.thetaV.textContent = t.toFixed(0) + "°"; el.phiV.textContent = p.toFixed(0) + "°";
@@ -650,6 +827,10 @@ function setPose(t, p) {
 el.theta.addEventListener("input", function () { setPose(parseFloat(el.theta.value), state.phi); });
 el.phi.addEventListener("input", function () { setPose(state.theta, parseFloat(el.phi.value)); });
 el.screen.addEventListener("change", function () { state.screen = el.screen.value; });
+el.game.addEventListener("change", function () {
+  state.game = el.game.value;
+  if (state.game === "race") newRace(); else newLevel(G.level);
+});
 el.rot.addEventListener("change", function () { state.rot = el.rot.value; setRot(state.rot); });
 el.crt.addEventListener("change", function () { crtOn = el.crt.value === "on"; });
 document.getElementById("img").addEventListener("change", function (e) {
@@ -661,18 +842,23 @@ document.getElementById("img").addEventListener("change", function (e) {
 });
 document.querySelectorAll("[data-pose]").forEach(function (b) {
   b.addEventListener("click", function () {
-    const m = { game: [OPEN_GAME,0], closed: [0,0], phone: [0,180], mid: [OPEN_GAME,90] };
+    const m = { game: [OPEN_GAME,0], closed: [0,0], phone: [0,180], mid: [OPEN_GAME,90], daily: [0,180] };
     const v = m[b.dataset.pose]; setPose(v[0], v[1]);
+    if (b.dataset.pose === "daily") {                 // 日常模式：拔掉铰链销取走底座
+      state.showDeck = !state.showDeck;
+      document.querySelectorAll('[data-tog="deck"]').forEach(function (x) { x.classList.toggle("on", state.showDeck); });
+    }
   });
 });
 document.querySelectorAll("[data-tog]").forEach(function (b) {
   b.addEventListener("click", function () {
     const t = b.dataset.tog;
     if (t === "phone") { state.showPhone = !state.showPhone; b.classList.toggle("on", state.showPhone); }
+    else if (t === "deck") { state.showDeck = !state.showDeck; b.classList.toggle("on", state.showDeck); }
     else if (t === "ctrl") { state.showCtrl = !state.showCtrl; b.classList.toggle("on", state.showCtrl); }
     else if (t === "lid") { state.showLid = !state.showLid; b.classList.toggle("on", state.showLid); }
     else if (t === "spin") { cam.spin = !cam.spin; b.classList.toggle("on", cam.spin); }
-    else if (t === "iso") { cam.yaw = 38*DTOR; cam.pitch = 20*DTOR; cam.dist = 620; }
+    else if (t === "iso") { cam.yaw = CAM_HOME.yaw*DTOR; cam.pitch = CAM_HOME.pitch*DTOR; cam.dist = CAM_HOME.dist; cam.target = CAM_HOME.target.slice(); }
   });
 });
 let anim = null;
@@ -736,11 +922,14 @@ function drawScreenQuad(mv) {
 }
 let prevT = performance.now();
 function frame(now) {
+  if (!ready) return;
   const dt = Math.min(0.05, (now - prevT)/1000); prevT = now;
   if (anim && !anim(now)) anim = null;
   if (cam.spin) cam.yaw += 0.35*dt;
   updatePress(dt);
-  if (state.screen === "game") { step(dt); drawScreen(); }
+  if (state.screen === "game") {
+    if (state.game === "race") { stepRace(dt); drawRace(); } else { step(dt); drawScreen(); }
+  }
 
   resize();
   gl.viewport(0, 0, canvas.width, canvas.height);
@@ -751,7 +940,7 @@ function frame(now) {
     const mv = modelMatrices(state.theta, state.phi);
     gl.useProgram(prog);
     gl.uniformMatrix4fv(loc.uVP, false, vpCache);
-    drawPart("deck", mv.deck);
+    if (state.showDeck) drawPart("deck", mv.deck);
     if (state.showCtrl) {
       CTRL.forEach(function (n) { drawPart(n, mv.deck, partTransform(n, dt)); });
     }
@@ -765,7 +954,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 setPose(OPEN_GAME, 0);
-requestAnimationFrame(frame);
+// 启动由 boot() 触发（等 params.json 加载完），见文件开头
 </script>
 </body>
 </html>

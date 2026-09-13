@@ -40,15 +40,17 @@
 
 | 件 | STL | 体积 | 估算耗材 | 打印时间 |
 |---|---|---|---|---|
-| deck 底座 | `out/stl/deck.stl` (33.5MB) | 129.7 cm³ | ~58 g | 8–11 h |
-| lid 盖框 | `out/stl/lid.stl` (9.1MB) | 31.9 cm³ | ~14 g | 2–3 h |
-| cradle 托盘 | `out/stl/cradle.stl` (11.6MB) | 64.7 cm³ | ~29 g | 3–4 h |
-| switch_frame 开关架 | `out/stl/switch_frame.stl` (9.4MB) | 18.5 cm³ | ~21 g | 2–3 h |
+| deck 底座 | `out/stl/deck.stl` (31.1MB) | 120.5 cm³ | ~54 g | 7–10 h |
+| lid 盖框 | `out/stl/lid.stl` (8.1MB) | 29.3 cm³ | ~13 g | 2–3 h |
+| cradle 托盘 | `out/stl/cradle.stl` (11.1MB) | 60.5 cm³ | ~27 g | 3–4 h |
+| switch_frame 开关架 | `out/stl/switch_frame.stl` (9.0MB) | 18.5 cm³ | ~21 g | 2–3 h |
 | 键帽 3 件 | `caps_abxy` / `cap_dpad` / `caps_small` | 4.2 cm³ | ~5 g | <1 h |
 | 肩键 2 件 | `lever_l` / `lever_r` | 1.4 cm³ | ~2 g | <1 h |
-| **合计** | | | **~105–120 g** | **15–19 h** |
+| **合计** | | | **~100–115 g** | **14–18 h** |
 
-首件（只 cradle）：~29 g / 3–4 h。
+首件（只 cradle）：~27 g / 3–4 h。
+
+整机厚度（本版已减薄）：合盖游戏 **34.1mm**、合盖手机模式 **42.4mm**、**拔掉底座当日常壳 22.5mm**（拧下 M4 螺杆、取下 deck，只剩盖框 + 托盘 + 手机）。
 
 ## 3. 0 期首件检查单（收到托盘当天照着量）
 
