@@ -1,17 +1,8 @@
 {
- "updated": "2026-09-13 18:29",
+ "updated": "2026-09-13 18:30",
  "games": {
   "run": [],
-  "tetris": [
-   {
-    "game": "tetris",
-    "score": 8880,
-    "user": "Li-Mingshuang",
-    "url": "https://github.com/Li-Mingshuang/flipdeck/issues/1",
-    "created": "2026-09-13",
-    "number": 1
-   }
-  ],
+  "tetris": [],
   "break": []
  }
 }
