@@ -313,7 +313,7 @@ const CTRL = Object.keys(DEF).filter(function (n) {
 });
 const parts = {};
 let loading = 0, tris = 0;
-pendingFrames = Object.keys(DEF).length;
+let pendingFrames = Object.keys(DEF).length;
 Object.keys(DEF).forEach(function (name) {
   loading++;
   fetch("stl/" + name + ".stl").then(function (r) {
@@ -332,7 +332,7 @@ Object.keys(DEF).forEach(function (name) {
     const pb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pb); gl.bufferData(gl.ARRAY_BUFFER, m.pos, gl.STATIC_DRAW);
     const nb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, nb); gl.bufferData(gl.ARRAY_BUFFER, m.nor, gl.STATIC_DRAW);
     parts[name] = { pos: pb, nor: nb, count: m.count, bb: { lo: lo, hi: hi } };
-    if (--pendingFrames === 0 && ready) { framed = false; fitCamera(state.theta, state.phi); framed = true; }
+    if (--pendingFrames === 0 && ready) fitCamera(state.theta, state.phi);   // 全部件加载完自动取景
   }).catch(function (e) { fail("加载 " + name + ".stl 失败：" + e.message); })
     .finally(function () { loading--; });
 });
@@ -1340,7 +1340,6 @@ document.querySelectorAll("[data-anim]").forEach(function (b) {
 });
 
 // ============================== 自动取景 ==============================
-let pendingFrames = 0, framed = false;
 function sceneCorners(theta, phi) {
   const mv = modelMatrices(theta, phi);
   const pts = [];

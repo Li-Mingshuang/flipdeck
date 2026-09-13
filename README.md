@@ -120,7 +120,7 @@ _还没有成绩 —— 来占个第一？_
 
 _还没有成绩 —— 来占个第一？_
 
-_最后更新：2026-09-13 18:56（UTC）_
+_最后更新：2026-09-13 18:53（UTC）_
 <!-- LEADERBOARD:END -->
 
 ## 仓库结构
@@ -138,6 +138,7 @@ flipdeck-cad/
 ├─ build.py             SDF→网格→STL + 渲染 + 报告（一键复现）
 ├─ check_poses.py       装配干涉检查
 ├─ pcb_outline.py       板框生成 + 板级自检
+├─ web/verify_*.js      **没浏览器也能验证网页**（见下）
 ├─ web_export.py        导出网页用轻量 STL
 ├─ make_docs.py         生成 docs/（Pages）
 ├─ status.py            刷新 PROGRESS.md 的状态块
@@ -145,6 +146,11 @@ flipdeck-cad/
 ```
 
 一键复现：`python build.py --render-dir ip12`（STL + 渲染 + 报告，约 6 分钟）。
+
+**没浏览器也能验证网页**（本项目的所有前端改动都靠这套兜底，因为写代码的模型看不到画面）：
+- `node web/verify_matrix.js` —— 机构矩阵与 Python 的 `poses.pose` 对答案（四个姿态偏差 ≤0.0005mm）
+- `node web/verify_framing.js` —— 自动取景是否把所有零件完整包进画面（逐姿态算画面占用率）
+- `node web/verify_runtime.js` —— 用 DOM/WebGL 桩把页面 JS 真跑一遍：逐条跑五个游戏、排行榜屏幕、姿态切换、提交按钮…并统计 `drawArrays` 次数，专门抓"打开就黑屏"这类加载期异常
 
 ## 换机型
 
