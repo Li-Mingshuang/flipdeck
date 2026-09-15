@@ -20,13 +20,13 @@ jobs:
     # 尺寸断言 + 姿态干涉检查 + 网页矩阵数学和 python 对答案
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
 
@@ -43,9 +43,9 @@ jobs:
     # 自动取景 + 真的用桩跑一遍 viewer 的 JS（抓黑屏这类运行期异常）
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
 
@@ -59,9 +59,9 @@ jobs:
     # docs/ 是网页演示的发布源，必须是 web/ 的忠实拷贝
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
