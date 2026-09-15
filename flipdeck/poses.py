@@ -20,6 +20,9 @@ LOCAL_BBOX = {
     "lid":    ((-92.0, -97.0, -10.0), (92.0, 11.0, 12.0)),
     # cradle 现在多了朝手机一侧的围边（往下 7.4mm），包围盒要跟着放大
     "cradle": ((-90.0, -92.0, -9.0), (90.0, -10.0, 17.0)),
+    # 模块化变体：键盘底座 + 买来的迷你蓝牙键盘模块
+    "deck_keyboard":   ((-95.0, -50.0, -1.0), (95.0, 62.0, 38.0)),
+    "keyboard_module": ((-80.0, -35.0, 9.0), (80.0, 35.0, 20.0)),
     "phone":  None,   # 由机型算
 }
 
@@ -50,7 +53,8 @@ def pose(name: str, theta: float = 0.0, phi: float = 0.0) -> np.ndarray:
     if name in ("cradle", "phone"):
         return T_lid @ T_cradle
     if name in ("caps", "levers", "caps_abxy", "cap_dpad", "caps_small", "lever_l",
-                "lever_r", "hinge_pin"):
+                "lever_r", "hinge_pin", "switch_frame", "sticks", "sticks_base",
+                "stick_l_cap", "stick_r_cap", "deck_keyboard", "keyboard_module"):
         return np.eye(4)
     raise KeyError(name)
 

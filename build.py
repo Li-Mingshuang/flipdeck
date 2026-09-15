@@ -53,7 +53,17 @@ WITH_DECK = ("cap_dpad", "caps_abxy", "caps_small", "lever_l", "lever_r", "switc
              "hinge_pin")
 
 
+DECK_KB_BBOX = ((-95.0, -50.0, -1.0), (95.0, 62.0, 38.0))
+KB_MOD_BBOX = ((-80.0, -35.0, 9.0), (80.0, 35.0, 20.0))
+
+
 def bbox_of(name: str, margin: float = 1.0):
+    if name == "deck_keyboard":
+        lo, hi = DECK_KB_BBOX
+        return (np.asarray(lo, dtype=float) - margin, np.asarray(hi, dtype=float) + margin)
+    if name == "keyboard_module":
+        lo, hi = KB_MOD_BBOX
+        return (np.asarray(lo, dtype=float) - margin, np.asarray(hi, dtype=float) + margin)
     if name.startswith("cap_") or name.startswith("caps_") or name.startswith("stick") \
             or name == "switch_frame":
         lo, hi = CAPS_BBOX
@@ -156,8 +166,8 @@ def main():
     outdir = os.path.join(OUT, args.render_dir) if args.render_dir else OUT
     os.makedirs(outdir, exist_ok=True)
 
-    names = args.only or ["deck", "lid", "cradle", "phone", "cap_dpad", "caps_abxy",
-                          "caps_small", "lever_l", "lever_r", "switch_frame"]
+    names = args.only or ["deck", "deck_keyboard", "lid", "cradle", "phone", "cap_dpad",
+                          "caps_abxy", "caps_small", "lever_l", "lever_r", "switch_frame"]
     ph = P.PHONES[P.DEFAULT_PHONE]
     report = ["# flipdeck-cad 构建报告\n",
               f"机型：**{ph.name}**（{ph.L} × {ph.W} × {ph.T} mm）\n",

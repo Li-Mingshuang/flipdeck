@@ -14,11 +14,35 @@ from flipdeck import poses
 
 def main():
     build = {"deck": parts.build_deck, "lid": parts.build_lid,
-             "cradle": parts.build_cradle, "phone": parts.build_phone}
+             "cradle": parts.build_cradle, "phone": parts.build_phone,
+             "deck_keyboard": parts.build_deck_keyboard,
+             "keyboard_module": parts.build_keyboard_module}
     print("=" * 100)
     print("### 装配间隙检查（gap<0 = 干涉；容差 -0.15mm）")
     rows = poses.run_pose_checks(build, verbose=True)
     ok, bad = poses.verdict(rows)
+    # 模块化变体：键盘底座与盖/手机的干涉 + 键盘模块与舱体的配合
+    print("\n### 键盘底座变体（模块化）")
+    extra = []
+    # (tag, a, b, theta, phi, voxel, 最小允许间隙)
+    # 贴合面本来就是 0 接触（和 deck-lid 一样），所以那一项用 -0.15 判定；
+    # 键盘模块是"坐在舱底"，也允许 0 接触。
+    rows2 = [
+        ("键盘底座·合盖", "deck_keyboard", "lid", 0.0, 0.0, 0.8, -0.15),
+        ("键盘底座·展开", "deck_keyboard", "lid", 110.0, 0.0, 0.8, 0.2),
+        ("键盘底座·手机位", "deck_keyboard", "phone", 0.0, 180.0, 0.8, 0.2),
+        ("键盘模块·坐在舱底", "deck_keyboard", "keyboard_module", 0.0, 0.0, 0.4, -0.05),
+    ]
+    bad2 = []
+    for tag, a, b, th, ph_, vox, tol in rows2:
+        gap, pos = poses.pair_gap(build, a, b, th, ph_, None, voxel=vox)
+        mark = "✔" if gap >= tol else "✘"
+        print(f"  {mark} {tag:18s} {a}-{b} gap={gap:+7.2f}mm（要求 >= {tol}）")
+        if gap < tol:
+            bad2.append(tag)
+    print("  ✔ 键盘底座变体全部通过（贴合面 0 接触属正常）" if not bad2
+          else f"  ✘ 键盘底座变体未通过：{bad2}")
+
     print("=" * 100)
     if ok:
         print("结论：全部姿态无干涉 ✔")

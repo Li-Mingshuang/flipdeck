@@ -4,7 +4,9 @@
 "use strict";
 const fs = require("fs"), path = require("path"), vm = require("vm");
 const ROOT = __dirname;
-const html = fs.readFileSync(path.join(ROOT, "flipdeck_viewer.html"), "utf8");
+const srcFile = process.argv[2] ? path.resolve(process.argv[2]) : path.join(ROOT, "flipdeck_viewer.html");
+const html = fs.readFileSync(srcFile, "utf8");
+console.log("被测文件：" + srcFile);
 const m = html.match(/<script>([\s\S]*?)<\/script>/);
 if (!m) { console.error("找不到 <script>"); process.exit(1); }
 const js = m[1];
@@ -172,6 +174,12 @@ setTimeout(function () {
       sandbox.__rafStep(2);
     });
   }, 8);
+  trial("底座切到键盘", function () {
+    fire(els["deckSwitch"], "click"); sandbox.__rafStep(3);
+  }, 3);
+  trial("底座切回手柄", function () {
+    fire(els["deckSwitch"], "click"); sandbox.__rafStep(3);
+  }, 3);
   trial("提交成绩按钮", function () { fire(els["submit"], "click"); }, 0);
   trial("Top10 面板", function () { fire(els["boardToggle"], "click"); }, 0);
   trial("滤镜/屏幕旋转", function () {

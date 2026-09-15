@@ -115,6 +115,7 @@
   <div class="btns">
     <button data-tog="phone" class="on">手机</button>
     <button data-tog="deck" class="on">底座</button>
+    <button id="deckSwitch">底座：手柄</button>
     <button data-tog="ctrl" class="on">键帽/摇杆</button>
     <button data-tog="lid" class="on">盖框</button>
     <button data-tog="spin">自动旋转</button>
@@ -291,6 +292,8 @@ function parseSTL(buf) {
 // name -> 颜色 / 跟随的位姿 / 是否属于"手柄件"
 const DEF = {
   deck:        { color: [0.60,0.64,0.70], pose: "deck" },
+  deck_keyboard: { color: [0.62,0.66,0.72], pose: "deck" },
+  keyboard_module: { color: [0.28,0.31,0.36], pose: "deck" },
   lid:         { color: [0.26,0.52,0.84], pose: "lid" },
   cradle:      { color: [0.92,0.56,0.18], pose: "cradle" },
   phone:       { color: [0.13,0.14,0.16], pose: "phone" },
@@ -308,9 +311,8 @@ const DEF = {
   stick_l_cap: { color: [0.30,0.32,0.37], pose: "deck" },
   stick_r_cap: { color: [0.30,0.32,0.37], pose: "deck" },
 };
-const CTRL = Object.keys(DEF).filter(function (n) {
-  return n !== "deck" && n !== "lid" && n !== "cradle" && n !== "phone";
-});
+const NOT_CTRL = ["deck", "deck_keyboard", "keyboard_module", "lid", "cradle", "phone"];
+const CTRL = Object.keys(DEF).filter(function (n) { return NOT_CTRL.indexOf(n) < 0; });
 const parts = {};
 let loading = 0, tris = 0;
 let pendingFrames = Object.keys(DEF).length;
@@ -1056,6 +1058,14 @@ document.getElementById("submit").addEventListener("click", function () {
     "&body=" + encodeURIComponent(body);
   window.open(url, "_blank");
 });
+document.getElementById("deckSwitch").addEventListener("click", function () {
+  state.deckVariant = state.deckVariant === "kb" ? "pad" : "kb";
+  this.textContent = "底座：" + (state.deckVariant === "kb" ? "键盘" : "手柄");
+  state.showDeck = true;
+  state.showCtrl = state.deckVariant !== "kb";
+  document.querySelectorAll('[data-tog="deck"]').forEach(function (x) { x.classList.add("on"); });
+  document.querySelectorAll('[data-tog="ctrl"]').forEach(function (x) { x.classList.toggle("on", state.showCtrl); });
+});
 let boardShown = false;
 document.getElementById("boardToggle").addEventListener("click", function () {
   const pre = document.getElementById("board");
@@ -1267,7 +1277,7 @@ canvas.addEventListener("wheel", function (e) {
 
 // ============================== UI ==============================
 const state = { theta: OPEN_GAME, phi: 0, showPhone: true, showCtrl: true, showLid: true,
-                showDeck: true, screen: "game", game: "run", rot: "0" };
+                showDeck: true, screen: "game", game: "run", rot: "0", deckVariant: "pad" };
 const el = { theta: document.getElementById("theta"), phi: document.getElementById("phi"),
              thetaV: document.getElementById("thetaV"), phiV: document.getElementById("phiV"),
              stat: document.getElementById("stat"), screen: document.getElementById("screen"),
@@ -1451,8 +1461,13 @@ function frame(now) {
     const mv = modelMatrices(state.theta, state.phi);
     gl.useProgram(prog);
     gl.uniformMatrix4fv(loc.uVP, false, vpCache);
-    if (state.showDeck) drawPart("deck", mv.deck);
-    if (state.showCtrl) {
+    if (state.showDeck) {
+      if (state.deckVariant === "kb") {
+        drawPart("deck_keyboard", mv.deck);
+        drawPart("keyboard_module", mv.deck, partTransform("keyboard_module", dt));
+      } else drawPart("deck", mv.deck);
+    }
+    if (state.showCtrl && state.deckVariant !== "kb") {
       CTRL.forEach(function (n) { drawPart(n, mv.deck, partTransform(n, dt)); });
     }
     if (state.showLid) drawPart("lid", mv.lid);

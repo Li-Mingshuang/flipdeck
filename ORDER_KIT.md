@@ -30,8 +30,9 @@
    - 安装柱螺纹底孔 Ø1.9（deck 内腔 4 个）
 9. 运动副（轴颈、销孔、轴承孔）麻烦支撑清理干净，不要留瘤
 
-【数量】每个文件 1 件（deck / lid / cradle / cap_dpad / caps_abxy / caps_small /
-        lever_l / lever_r / switch_frame 各 1，共 9 件）；hinge_pin 不用打，我用 M4 螺杆。
+【数量】每个文件 1 件（lid / cradle / cap_dpad / caps_abxy / caps_small /
+        lever_l / lever_r / switch_frame 各 1，共 8 件）；hinge_pin 不用打，我用 M4 螺杆。
+        底座二选一：deck.stl（摇杆+按键）或 deck_keyboard.stl（迷你键盘舱），不用都打。
 ```
 
 **首件只要 1 件**：先只打 `cradle.stl`（约 29g、3–4 小时、估计 ¥30–60），验证没问题再打其它。
@@ -42,13 +43,17 @@
 |---|---|---|---|---|
 | deck 底座 | `out/stl/deck.stl` (31.1MB) | 120.5 cm³ | ~54 g | 7–10 h |
 | lid 盖框 | `out/stl/lid.stl` (8.1MB) | 29.3 cm³ | ~13 g | 2–3 h |
-| cradle 托盘 | `out/stl/cradle.stl` (11.1MB) | 60.5 cm³ | ~27 g | 3–4 h |
+| cradle 托盘 | `out/stl/cradle.stl` (11.1MB) | 64.8 cm³ | ~29 g | 3–4 h |
+| deck_keyboard 键盘底座（可选，和 deck 二选一） | `out/stl/deck_keyboard.stl` (31.8MB) | 160.0 cm³ | ~71 g | 6–8 h |
 | switch_frame 开关架 | `out/stl/switch_frame.stl` (9.0MB) | 18.5 cm³ | ~21 g | 2–3 h |
 | 键帽 3 件 | `caps_abxy` / `cap_dpad` / `caps_small` | 4.2 cm³ | ~5 g | <1 h |
 | 肩键 2 件 | `lever_l` / `lever_r` | 1.4 cm³ | ~2 g | <1 h |
-| **合计** | | | **~100–115 g** | **14–18 h** |
+| **合计（游戏版）** | 上面除 deck_keyboard | | **~100–115 g** | **14–18 h** |
+| **合计（键盘版）** | deck_keyboard 换掉 deck | | **~118–130 g** | **13–19 h** |
 
-首件（只 cradle）：~27 g / 3–4 h。
+首件（只 cradle）：~29 g / 3–4 h。
+
+**模块化说明**：铰链接口是统一的"模块标准"（销孔 / 凸耳位置 / 贴合面 z=19 / 磁铁 / 密封槽），所以 `deck`（摇杆+按键）和 `deck_keyboard`（迷你蓝牙键盘舱）可以互换，换底座只要拧下 2 根 M4 螺杆抽出来。**不用两个都打**，先打游戏版就行；想 vibecoding 再打键盘版。
 
 整机厚度（本版已减薄）：合盖游戏 **34.1mm**、合盖手机模式 **42.4mm**、**拔掉底座当日常壳 22.5mm**（拧下 M4 螺杆、取下 deck，只剩盖框 + 托盘 + 手机）。
 

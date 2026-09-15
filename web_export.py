@@ -20,7 +20,7 @@ from flipdeck.meshlib import mesh_stats, surface_nets, write_stl
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "stl")
 # 每个文件对应网页里的一个可独立动画的零件
-PARTS = ["deck", "lid", "cradle", "phone",
+PARTS = ["deck", "deck_keyboard", "keyboard_module", "lid", "cradle", "phone",
          "cap_dpad", "cap_a", "cap_b", "cap_x", "cap_y",
          "cap_start", "cap_select", "cap_home",
          "lever_l", "lever_r", "sticks_base", "stick_l_cap", "stick_r_cap"]

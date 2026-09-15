@@ -140,6 +140,94 @@ def build_deck(phone=None):
 
 
 # --------------------------------------------------------------------------- lid
+def _deck_shell_prisms():
+    """底盘外壳三段收边（游戏底座与键盘底座共用）。"""
+    return [
+        prism(P.DECK_W - 3.0, P.DECK_D - 3.0, 5.0, 0.0, 1.6),
+        prism(P.DECK_W, P.DECK_D, 6.5, 1.3, P.DECK_H - 1.5),
+        prism(P.DECK_W - 3.2, P.DECK_D - 3.2, 5.0, P.DECK_H - 1.8, P.DECK_H),
+    ]
+
+
+def _deck_hinge_and_faces():
+    """铰链（两侧凸耳 + 腹板）+ 合盖磁铁坑 + 密封条槽下的共用件。"""
+    hx0, hx1 = P.HINGE_X_DECK
+    wx0, wx1 = P.HINGE_WEB_X
+    hinges = []
+    for sx in (1, -1):
+        cx = sx * (hx0 + hx1) / 2
+        wcx = sx * (wx0 + wx1) / 2
+        ww = wx1 - wx0
+        hinges.append(union(
+            cyl(P.HINGE_BARREL_R, hx1 - hx0, (cx, P.HINGE_Y, P.HINGE_Z), axis="x"),
+            box((ww, 16.0, 5.8), center=(wcx, 45.0, P.HINGE_Z - 9.1)),
+            box((ww, 10.0, 12.0), center=(wcx, 49.0, P.HINGE_Z - 3.0)),
+        ))
+    pin = cyl(P.HINGE_BORE / 2, 340.0, (0.0, P.HINGE_Y, P.HINGE_Z), axis="x")
+    mags = [cyl(P.LATCH_MAG_D / 2, P.LATCH_MAG_DEPTH,
+                (sx * (P.LID_RAIL_X[0] + P.LID_RAIL_X[1]) / 2, my,
+                 P.DECK_H - P.LATCH_MAG_DEPTH / 2 + 0.02))
+            for sx in (1, -1) for my in P.LATCH_MAG_Y]
+    gasket = prism_ring(P.DECK_W - 2 * P.GASKET_INSET, P.DECK_D - 2 * P.GASKET_INSET, P.GASKET_R_OUT,
+                        P.DECK_W - 2 * (P.GASKET_INSET + P.GASKET_W),
+                        P.DECK_D - 2 * (P.GASKET_INSET + P.GASKET_W),
+                        max(1.5, P.GASKET_R_OUT - P.GASKET_W),
+                        P.DECK_H - P.GASKET_DEPTH, P.DECK_H + 1.0)
+    return union(*hinges), pin, mags, gasket
+
+
+def build_deck_keyboard(phone=None):
+    """键盘底座（模块化变体）：同一铰链接口，控制井换成"迷你蓝牙键盘"舱位。
+
+    放进去的是买来的迷你蓝牙键盘模块（约 150×60×7.5mm，自带电池/蓝牙/充电口），
+    所以这一件不需要任何自研电路；装好后就是"手机当屏幕的迷你笔记本"。
+    """
+    kw, kd, kt = P.KB_MODULE
+    shell = union(*_deck_shell_prisms())
+    deck = shell
+
+    # 舱体：从贴合面往下挖，模块顶面比贴合面低 KB_TOP_GAP
+    bay_top = P.DECK_H - P.KB_TOP_GAP
+    bay_floor = bay_top - kt
+    bay = prism(kw + 2 * P.KB_FIT, kd + 2 * P.KB_FIT, 3.0, bay_floor, P.DECK_H + 2.0)
+    # 底部掏空（留 3mm 壁 + 舱底）
+    hollow = prism(P.DECK_W - 11.0, P.DECK_D - 11.0, 4.0, 3.0, bay_floor - 2.0)
+    # 侧壁充电口（对准模块自己的充电口，插线用）
+    charge = box((5.0, P.KB_CHARGE_CUT[0], P.KB_CHARGE_CUT[1]),
+                 center=(-P.DECK_W / 2, 0.0, bay_floor + kt / 2))
+    deck = diff(deck, bay, hollow, charge)
+
+    # 前缘挡边 + 两侧定位边（模块靠重力 + 挡边定位，倒过来也不掉）
+    lip = box((kw + 2 * P.KB_FIT, P.KB_LIP, P.KB_TOP_GAP + 0.4),
+              center=(0.0, -P.PIVOT_Y * 0 - (kd / 2 + P.KB_FIT - P.KB_LIP / 2), bay_top + 0.2))
+    deck = union(deck, lip)
+
+    hinge, pin_bore, mags, gasket = _deck_hinge_and_faces()
+    deck = diff(union(deck, hinge), pin_bore, *mags, gasket)
+    return deck
+
+
+def build_keyboard_module(phone=None):
+    """买来的迷你蓝牙键盘（虚拟件，仅用于预览，不打印）。
+    总厚 = KB_MODULE[2]（含键帽），键区 15 列 × 5 行、间距 9.6mm。"""
+    kw, kd, kt = P.KB_MODULE
+    body_h = kt - 1.6
+    z0 = P.DECK_H - P.KB_TOP_GAP - kt            # 就地建模：坐在键盘舱底
+    body = prism(kw, kd, 3.0, z0, z0 + body_h)
+    cols, rows, pitch = 15, 5, 9.6
+    x0 = -(cols - 1) * pitch / 2.0
+    y0 = -(rows - 1) * pitch / 2.0
+    keys = []
+    for r in range(rows):
+        for c in range(cols):
+            if r == rows - 1 and 4 <= c <= 10:          # 最下一排留出空格
+                continue
+            keys.append(box((8.4, 8.4, 1.6), center=(x0 + c * pitch, y0 + r * pitch, z0 + body_h + 0.8), r=1.0))
+    keys.append(box((5 * pitch + 1.0, 8.4, 1.6),
+                    center=(x0 + 7 * pitch, y0 + (rows - 1) * pitch, z0 + body_h + 0.8), r=1.0))  # 空格
+    return union(body, *keys)
+
+
 def build_lid(phone=None):
     (x0, x1) = P.LID_RAIL_X
     (y0, y1) = P.LID_BODY_Y
@@ -414,6 +502,8 @@ PARTS = {
     "caps_small": build_caps_small,
     "lever_l": lambda: build_lever(-1),
     "lever_r": lambda: build_lever(1),
+    "deck_keyboard": build_deck_keyboard,
+    "keyboard_module": build_keyboard_module,
     "switch_frame": build_switch_frame,
     "sticks": build_sticks,
     "sticks_base": build_sticks_base,
